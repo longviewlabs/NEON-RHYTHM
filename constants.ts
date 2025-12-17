@@ -28,8 +28,20 @@ export const MUSIC_INTRO_URL = './before-game.mp3';
 export const MUSIC_GAME_URL = './in-the-groove-music.mp3';
 export const MUSIC_SCORE_URL = './Scores-screen.mp3';
 
-export const BASE_BPM = 100; // Updated to match "In the Groove" BPM from HTML
+export const BASE_BPM = 140; // Actual BPM of in-the-groove-music.mp3
 export const SONG_BPM = 140; // Default fallback for note generation if needed
+
+// ===========================================
+// AUDIO SYNC CONFIGURATION
+// ===========================================
+
+// Time in seconds where the FIRST BEAT/DRUM hits in the song
+// The first beat of in-the-groove-music.mp3 starts at 3.11 seconds
+export const FIRST_BEAT_TIME_SEC = 3.11;
+
+// Fine-tune offset in milliseconds (for latency compensation)
+// Positive = delay game beats, Negative = advance game beats
+export const AUDIO_OFFSET_MS = 0;
 
 // Generate a simple rhythmic chart
 export const generateDemoChart = (): NoteData[] => {

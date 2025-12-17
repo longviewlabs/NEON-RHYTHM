@@ -10,7 +10,7 @@ import WebcamPreview from './components/WebcamPreview';
 import { GoogleGenAI } from "@google/genai";
 import { DIFFICULTIES, Difficulty, GameStatus, RobotState, GeminiResponse } from './types';
 import { RotateCcw, Volume2, VolumeX } from 'lucide-react';
-import { MUSIC_INTRO_URL, MUSIC_GAME_URL, MUSIC_SCORE_URL, BASE_BPM } from './constants';
+import { MUSIC_INTRO_URL, MUSIC_GAME_URL, MUSIC_SCORE_URL, BASE_BPM, AUDIO_OFFSET_MS, FIRST_BEAT_TIME_SEC } from './constants';
 
 const App: React.FC = () => {
     // Hardware Refs
@@ -95,7 +95,8 @@ const App: React.FC = () => {
     }, []);
 
     // Generic Play Track Function (mute only affects background music)
-    const playTrack = useCallback((type: 'intro' | 'game' | 'score') => {
+    // startOffset: time in seconds to start playback from (for skipping intros)
+    const playTrack = useCallback((type: 'intro' | 'game' | 'score', startOffset: number = 0) => {
         if (!audioCtxRef.current) return;
         
         // Stop currently playing track
@@ -109,11 +110,13 @@ const App: React.FC = () => {
         let volume = 0.5;
         let loop = true;
         let playbackRate = 1.0;
+        let offset = startOffset;
 
         switch (type) {
             case 'intro':
                 buffer = introBufferRef.current;
                 volume = 0.2;
+                offset = 0; // Always start intro from beginning
                 break;
             case 'game':
                 buffer = gameBufferRef.current;
@@ -121,10 +124,13 @@ const App: React.FC = () => {
                 // Pitch shift for game difficulty
                 const targetBPM = DIFFICULTIES[difficulty].bpm;
                 playbackRate = targetBPM / BASE_BPM;
+                // Adjust offset for playback rate (faster = less time to first beat)
+                offset = startOffset / playbackRate;
                 break;
             case 'score':
                 buffer = scoreBufferRef.current;
                 volume = 0.2;
+                offset = 0; // Always start score from beginning
                 break;
         }
 
@@ -140,7 +146,8 @@ const App: React.FC = () => {
 
             source.connect(gain);
             gain.connect(ctx.destination);
-            source.start(0);
+            // Start from offset position (skip intro if specified)
+            source.start(0, offset);
             currentSourceRef.current = source;
             currentGainRef.current = gain; // Store gain reference for mute control
         }
@@ -288,10 +295,42 @@ const App: React.FC = () => {
         setRobotState('average');
         setCurrentBeat(-1);
         
-        // Start Game Music IMMEDIATELY (like in HTML version)
-        playTrack('game');
-
-        // Countdown with immediate start after 0
+        // Calculate timing based on difficulty's playback rate
+        const targetBPM = DIFFICULTIES[difficulty].bpm;
+        const playbackRate = targetBPM / BASE_BPM;
+        
+        // Time until first beat at current playback rate
+        const timeToFirstBeat = FIRST_BEAT_TIME_SEC / playbackRate;
+        
+        // We have a 3-second countdown, so:
+        // - If first beat is at 3s (at 1x speed), start music immediately
+        // - If first beat takes longer, delay music start
+        // - If first beat comes sooner, start music from an offset
+        
+        const countdownDuration = 3; // 3 seconds countdown
+        
+        if (timeToFirstBeat >= countdownDuration) {
+            // First beat comes after countdown - start music now, it will sync
+            playTrack('game', 0);
+            
+            // Wait for the difference, then start countdown
+            const waitTime = (timeToFirstBeat - countdownDuration) * 1000;
+            setTimeout(() => {
+                startCountdown(newSequence);
+            }, waitTime);
+        } else {
+            // First beat comes before countdown ends - skip intro
+            // Start music from a point so first beat aligns with countdown end
+            const skipAmount = FIRST_BEAT_TIME_SEC; // Skip the intro
+            playTrack('game', skipAmount);
+            
+            // Start countdown immediately
+            startCountdown(newSequence);
+        }
+    };
+    
+    // Separated countdown logic for cleaner code
+    const startCountdown = (newSequence: number[]) => {
         let count = 3;
         setCountdown(count);
         playCountdownBeep(count);
@@ -307,7 +346,7 @@ const App: React.FC = () => {
             if (count === 0) {
                 clearInterval(timer);
                 setCountdown(null);
-                // Start sequence immediately - no delay
+                // Start sequence immediately - synced with first beat!
                 runSequence(newSequence);
             }
         }, 1000);
@@ -321,13 +360,13 @@ const App: React.FC = () => {
         const frames: string[] = [];
         const results: (boolean | null)[] = new Array(seq.length).fill(null);
 
-        // Show first beat immediately when sequence starts
-        setCurrentBeat(0);
-        // Play metronome tick for beat 0 (first beat - accent)
-        playTick(0);
+        // Start the beat loop after audio offset for perfect sync
+        const startBeatLoop = () => {
+            // Show first beat immediately when sequence starts
+            setCurrentBeat(0);
 
-        // Use consistent interval from the start - first callback happens after one interval
-        const loop = setInterval(() => {
+            // Use consistent interval from the start - first callback happens after one interval
+            const loop = setInterval(() => {
             // JUDGE THE PREVIOUS BEAT (The one we just finished showing)
             if (beat >= 0 && beat < seq.length) {
                 // Capture Frame for Analysis
@@ -367,12 +406,17 @@ const App: React.FC = () => {
                 return;
             }
 
-            // Show current beat and play metronome tick
+            // Show current beat
             setCurrentBeat(beat);
-            // Calculate beat number in measure (0-3 pattern like HTML version)
-            const beatInMeasure = beat % 4;
-            playTick(beatInMeasure);
-        }, interval);
+            }, interval);
+        };
+
+        // Apply audio offset for sync - if 0, start immediately
+        if (AUDIO_OFFSET_MS > 0) {
+            setTimeout(startBeatLoop, AUDIO_OFFSET_MS);
+        } else {
+            startBeatLoop();
+        }
     };
 
     const analyzeGame = async (seq: number[], frames: string[], localResults: (boolean | null)[]) => {
