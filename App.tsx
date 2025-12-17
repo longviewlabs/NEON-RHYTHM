@@ -246,14 +246,17 @@ const App: React.FC = () => {
         setCapturedFrames([]);
         setResultData(null);
         setStatus(GameStatus.PLAYING);
-        setCountdown(3);
         setRobotState('average');
         setCurrentBeat(-1);
         
         // Start Game Music IMMEDIATELY (like in HTML version)
         playTrack('game');
 
+        // Countdown with immediate start after 0
         let count = 3;
+        setCountdown(count);
+        playTick(true);
+        
         const timer = setInterval(() => {
             count--;
             setCountdown(count);
@@ -262,6 +265,7 @@ const App: React.FC = () => {
             if (count === 0) {
                 clearInterval(timer);
                 setCountdown(null);
+                // Start sequence immediately - no delay
                 runSequence(newSequence);
             }
         }, 1000);
@@ -271,17 +275,17 @@ const App: React.FC = () => {
         // playMusic(); // Removed: Handled in startGame now
         const bpm = DIFFICULTIES[difficulty].bpm;
         const interval = 60000 / bpm;
-        let beat = -1; // Start at -1 to represent "ready" state, ball will jump to 0 immediately
+        let beat = 0; // Start at 0
         const frames: string[] = [];
         const results: (boolean | null)[] = new Array(seq.length).fill(null);
 
-        // Initial tick to start
+        // Show first beat immediately when sequence starts
         setCurrentBeat(0);
         playTick(true);
 
+        // Use consistent interval from the start - first callback happens after one interval
         const loop = setInterval(() => {
-            // JUDGE THE PREVIOUS BEAT (The one we just finished holding for)
-            // If we are at beat 0, we judge it now before moving to 1
+            // JUDGE THE PREVIOUS BEAT (The one we just finished showing)
             if (beat >= 0 && beat < seq.length) {
                 // Capture Frame for Analysis
                 if (videoRef.current && canvasRef.current) {
@@ -307,24 +311,22 @@ const App: React.FC = () => {
                 else playFailSound();
             }
 
+            // Increment to next beat
             beat++;
 
+            // Check if we've shown all beats
             if (beat >= seq.length) {
                 clearInterval(loop);
+                // Last beat was already judged and captured in the loop above
                 // Music transition handled by state change to ANALYZING/RESULT
                 setCapturedFrames(frames);
                 analyzeGame(seq, frames, results);
                 return;
             }
 
-            setCurrentBeat(beat + 1); // Move ball to next target (Lookahead)
-            // Actually, we want the ball to LAND on `beat`. 
-            // So if beat increments to 0, ball lands on 0.
-            // If beat increments to 1, ball lands on 1.
+            // Show current beat
             setCurrentBeat(beat);
-            
             playTick(false);
-            
         }, interval);
     };
 
@@ -531,8 +533,8 @@ const App: React.FC = () => {
                             {status === GameStatus.PLAYING && (
                                 <div className="flex flex-col items-center animate-pop">
                                     
-                                    {/* Glass Bar UI - Improved border and shadow */}
-                                    <div className="glass-panel px-6 py-3 rounded-2xl flex flex-wrap justify-center items-center gap-2 max-w-[95vw] shadow-[0_0_30px_rgba(0,0,0,0.3)] border border-white/10">
+                                    {/* Glass Bar UI - Frosted glass effect */}
+                                    <div className="px-6 py-3 rounded-2xl flex flex-wrap justify-center items-center gap-2 max-w-[95vw] bg-white/10 backdrop-blur-md border border-white/10 shadow-[0_0_30px_rgba(0,0,0,0.3)]">
                                         {sequence.map((num, idx) => {
                                             const isPast = idx < currentBeat;
                                             const isCurrent = idx === currentBeat;
