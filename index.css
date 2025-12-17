@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  background-color: #050510;
+  overflow: hidden;
+  color: white;
+}
+
+@layer utilities {
+    .text-glow {
+        text-shadow: 0 0 10px #00f3ff, 0 0 20px #00f3ff;
+    }
+    .text-glow-pink {
+        text-shadow: 0 0 10px #ff00ff, 0 0 20px #ff00ff;
+    }
+    .glass-panel {
+        @apply bg-white/10 backdrop-blur-md border border-white/20 shadow-xl;
+    }
+}
+
+/* --- ROBOT ANIMATIONS --- */
+
+/* SAD */
+@keyframes violent-sob {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    10% { transform: translateY(2px) translateX(-1px) rotate(-1deg); }
+    20% { transform: translateY(4px) translateX(1px) rotate(1deg); }
+    30% { transform: translateY(0) rotate(0deg); }
+    40% { transform: translateY(8px) scaleY(0.92); }
+    50% { transform: translateY(6px) scaleY(0.95); }
+    60% { transform: translateY(8px) scaleY(0.92); }
+    80% { transform: translateY(0); }
+}
+.animate-sob { animation: violent-sob 1.5s infinite; }
+
+@keyframes squeeze-tight {
+    0%, 90% { transform: scaleY(0.15) scaleX(1.1); }
+    95% { transform: scaleY(0.8); }
+    100% { transform: scaleY(0.15) scaleX(1.1); }
+}
+.animate-squeeze { animation: squeeze-tight 3s infinite; }
+
+@keyframes cry-hard {
+    0% { top: 15px; opacity: 0.8; transform: scale(0.5); }
+    50% { opacity: 1; transform: scale(1.2); }
+    100% { top: 60px; opacity: 0; transform: scale(0.5); }
+}
+.animate-cry { animation: cry-hard 0.8s infinite linear; }
+
+/* HAPPY */
+@keyframes jump-for-joy {
+    0% { transform: translateY(0) scale(1, 1); }
+    10% { transform: translateY(5px) scale(1.1, 0.9); }
+    40% { transform: translateY(-40px) scale(0.95, 1.05) rotate(-3deg); }
+    50% { transform: translateY(-40px) scale(0.95, 1.05) rotate(3deg); }
+    65% { transform: translateY(0) scale(1.05, 0.95); }
+    100% { transform: translateY(0) scale(1, 1); }
+}
+.animate-jump { animation: jump-for-joy 0.8s cubic-bezier(0.28, 0.84, 0.42, 1) infinite; }
+
+@keyframes happy-twinkle {
+    0% { transform: scale(1); }
+    100% { transform: scale(1.1); border-color: #69f0ae; }
+}
+.animate-twinkle { animation: happy-twinkle 0.8s infinite alternate; }
+
+/* ANALYZING */
+@keyframes scan {
+    0% { top: -50%; }
+    100% { top: 150%; }
+}
+.animate-scan { animation: scan 2s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+
+@keyframes lookAround {
+    0%, 10% { transform: translate(0, 0); }
+    20% { transform: translate(-8px, 2px); }
+    40% { transform: translate(-8px, 2px); }
+    50% { transform: translate(8px, -2px); }
+    70% { transform: translate(8px, -2px); }
+    80% { transform: translate(0, 0); }
+    100% { transform: translate(0, 0); }
+}
+.animate-look { animation: lookAround 5s infinite; }
+
+@keyframes pop-in {
+    0% { transform: scale(0); opacity: 0; }
+    70% { transform: scale(1.2); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+}
+.animate-pop { animation: pop-in 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
