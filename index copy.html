@@ -1,0 +1,2856 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Rhythm Gesture Game</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700;900&display=swap" rel="stylesheet">
+    <!-- MediaPipe Vision Tasks -->
+    <script type="module">
+        import { HandLandmarker, FilesetResolver, DrawingUtils } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18';
+        window.HandLandmarker = HandLandmarker;
+        window.FilesetResolver = FilesetResolver;
+        window.DrawingUtils = DrawingUtils;
+    </script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: '#00f3ff', // Cyan Neon
+                        secondary: '#ff00ff', // Magenta Neon
+                        dark: '#050510',
+                        glass: 'rgba(255, 255, 255, 0.1)',
+                    },
+                    animation: {
+                        'pulse-fast': 'pulse 0.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .text-glow {
+                text-shadow: 0 0 10px theme('colors.primary'), 0 0 20px theme('colors.primary');
+            }
+            .text-glow-pink {
+                text-shadow: 0 0 10px theme('colors.secondary'), 0 0 20px theme('colors.secondary');
+            }
+            .glass-panel {
+                @apply bg-glass backdrop-blur-md border border-white/20 shadow-xl;
+            }
+        }
+        
+        body {
+            background-color: #000;
+        }
+
+        /* Mirror the video feed */
+        #webcam {
+            transform: scaleX(-1);
+        }
+    </style>
+    <style>
+        /* --- Shared & Container Styles --- */
+        .robot-wrapper {
+            display: none;
+            /* Hidden by default */
+            transform: scale(0.8);
+            /* Adjusted scale for UI integration */
+            position: relative;
+            margin: 0 auto 20px auto;
+            /* Centered with bottom margin to separate from score */
+        }
+
+        .robot-wrapper.active {
+            display: block;
+        }
+
+        /* =========================================
+           STATE 1: SAD ROBOT CSS
+           ========================================= */
+        .sad-theme .robot-head {
+            width: 140px;
+            height: 110px;
+            background-color: #ffffff;
+            border-radius: 45px;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2), inset 0 -8px 0 rgba(0, 0, 0, 0.05);
+            animation: violent-sob 1.5s infinite;
+            z-index: 10;
+        }
+
+        @keyframes violent-sob {
+
+            0%,
+            100% {
+                transform: translateY(0) rotate(0deg);
+            }
+
+            10% {
+                transform: translateY(2px) translateX(-1px) rotate(-1deg);
+            }
+
+            20% {
+                transform: translateY(4px) translateX(1px) rotate(1deg);
+            }
+
+            30% {
+                transform: translateY(0) rotate(0deg);
+            }
+
+            40% {
+                transform: translateY(8px) scaleY(0.92);
+            }
+
+            50% {
+                transform: translateY(6px) scaleY(0.95);
+            }
+
+            60% {
+                transform: translateY(8px) scaleY(0.92);
+            }
+
+            80% {
+                transform: translateY(0);
+            }
+        }
+
+        .sad-theme .face-screen {
+            width: 100px;
+            height: 65px;
+            background-color: #2b3040;
+            border-radius: 28px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            border: 4px solid #90a4ae;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .sad-theme .eyes-container {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 8px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .sad-theme .eye {
+            width: 14px;
+            height: 14px;
+            background-color: #00e676;
+            border-radius: 50%;
+            position: relative;
+            box-shadow: 0 0 5px #00e676;
+            transform: scaleY(0.2);
+            animation: squeeze-tight 3s infinite;
+        }
+
+        @keyframes squeeze-tight {
+
+            0%,
+            90% {
+                transform: scaleY(0.15) scaleX(1.1);
+            }
+
+            95% {
+                transform: scaleY(0.8);
+            }
+
+            100% {
+                transform: scaleY(0.15) scaleX(1.1);
+            }
+        }
+
+        .sad-theme .tear {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background-color: #40c4ff;
+            border-radius: 50%;
+            top: 15px;
+            opacity: 0;
+            z-index: 20;
+        }
+
+        .sad-theme .tear.stream-1 {
+            left: 4px;
+            animation: cry-hard 0.8s infinite linear;
+        }
+
+        .sad-theme .tear.stream-2 {
+            left: 4px;
+            animation: cry-hard 0.8s infinite linear 0.4s;
+        }
+
+        .sad-theme .tear.stream-3 {
+            right: 4px;
+            animation: cry-hard 0.9s infinite linear 0.1s;
+        }
+
+        .sad-theme .tear.stream-4 {
+            right: 4px;
+            animation: cry-hard 0.9s infinite linear 0.5s;
+        }
+
+        @keyframes cry-hard {
+            0% {
+                top: 15px;
+                opacity: 0.8;
+                transform: scale(0.5);
+            }
+
+            50% {
+                opacity: 1;
+                transform: scale(1.2);
+            }
+
+            100% {
+                top: 60px;
+                opacity: 0;
+                transform: scale(0.5);
+            }
+        }
+
+        .sad-theme .mouth {
+            width: 18px;
+            height: 10px;
+            border-top: 4px solid #00e676;
+            border-radius: 12px 12px 0 0;
+            opacity: 0.9;
+            animation: lip-quiver 0.15s infinite;
+        }
+
+        @keyframes lip-quiver {
+            0% {
+                transform: translateX(0);
+            }
+
+            25% {
+                transform: translateX(-1px) rotate(-1deg);
+            }
+
+            75% {
+                transform: translateX(1px) rotate(1deg);
+            }
+
+            100% {
+                transform: translateX(0);
+            }
+        }
+
+        .sad-theme .antenna-stem {
+            width: 6px;
+            height: 25px;
+            background-color: #cfd8dc;
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform-origin: bottom center;
+            z-index: -1;
+            transform: translateX(-50%) rotate(-45deg);
+            animation: sad-flop 1.5s infinite;
+        }
+
+        @keyframes sad-flop {
+
+            0%,
+            100% {
+                transform: translateX(-50%) rotate(-45deg);
+            }
+
+            40% {
+                transform: translateX(-50%) rotate(-55deg);
+            }
+        }
+
+        .sad-theme .antenna-bulb {
+            width: 14px;
+            height: 14px;
+            background-color: #2979ff;
+            border-radius: 50%;
+            position: absolute;
+            top: -14px;
+            left: -4px;
+            box-shadow: 0 0 8px #2979ff;
+            animation: broken-flicker 2s infinite steps(4);
+        }
+
+        @keyframes broken-flicker {
+
+            0%,
+            100% {
+                opacity: 0.4;
+            }
+
+            10% {
+                opacity: 0.1;
+            }
+
+            20% {
+                opacity: 0.4;
+            }
+
+            60% {
+                opacity: 0.2;
+            }
+        }
+
+        .sad-theme .puddle-container {
+            position: absolute;
+            bottom: -35px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .sad-theme .puddle {
+            width: 60px;
+            height: 15px;
+            background-color: rgba(64, 196, 255, 0.3);
+            border-radius: 50%;
+            animation: puddle-ripple 1s infinite;
+        }
+
+        @keyframes puddle-ripple {
+            0% {
+                transform: scale(0.9);
+                opacity: 0.3;
+            }
+
+            50% {
+                transform: scale(1.1);
+                opacity: 0.5;
+            }
+
+            100% {
+                transform: scale(0.9);
+                opacity: 0.3;
+            }
+        }
+
+        .sad-theme .splash {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background-color: #40c4ff;
+            border-radius: 50%;
+            opacity: 0;
+        }
+
+        .sad-theme .splash.s1 {
+            left: 10px;
+            animation: splash-jump 0.8s infinite 0.2s;
+        }
+
+        .sad-theme .splash.s2 {
+            right: 10px;
+            animation: splash-jump 0.8s infinite 0.5s;
+        }
+
+        .sad-theme .splash.s3 {
+            left: 25px;
+            animation: splash-jump 0.6s infinite 0.1s;
+        }
+
+        @keyframes splash-jump {
+            0% {
+                transform: translateY(0);
+                opacity: 1;
+            }
+
+            50% {
+                transform: translateY(-15px);
+                opacity: 0.8;
+            }
+
+            100% {
+                transform: translateY(0);
+                opacity: 0;
+            }
+        }
+
+        /* =========================================
+           STATE 2: HAPPY ROBOT CSS
+           ========================================= */
+        .happy-theme .robot-head {
+            width: 140px;
+            height: 110px;
+            background-color: #ffffff;
+            border-radius: 45px;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 10px 25px rgba(255, 215, 64, 0.4), inset 0 -8px 0 rgba(0, 0, 0, 0.05);
+            animation: jump-for-joy 0.8s cubic-bezier(0.28, 0.84, 0.42, 1) infinite;
+            z-index: 10;
+        }
+
+        @keyframes jump-for-joy {
+            0% {
+                transform: translateY(0) scale(1, 1);
+            }
+
+            10% {
+                transform: translateY(5px) scale(1.1, 0.9);
+            }
+
+            40% {
+                transform: translateY(-40px) scale(0.95, 1.05) rotate(-3deg);
+            }
+
+            50% {
+                transform: translateY(-40px) scale(0.95, 1.05) rotate(3deg);
+            }
+
+            65% {
+                transform: translateY(0) scale(1.05, 0.95);
+            }
+
+            100% {
+                transform: translateY(0) scale(1, 1);
+            }
+        }
+
+        .happy-theme .face-screen {
+            width: 100px;
+            height: 65px;
+            background-color: #2b3040;
+            border-radius: 28px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            border: 4px solid #ffd740;
+            box-shadow: inset 0 0 15px rgba(255, 215, 64, 0.3);
+        }
+
+        .happy-theme .eyes-container {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 2px;
+            z-index: 2;
+        }
+
+        .happy-theme .eye {
+            width: 18px;
+            height: 12px;
+            border-top: 5px solid #00e676;
+            border-radius: 50% 50% 0 0;
+            background: transparent;
+            box-shadow: 0 -2px 5px rgba(0, 230, 118, 0.5);
+            animation: happy-twinkle 0.8s infinite alternate;
+        }
+
+        @keyframes happy-twinkle {
+            0% {
+                transform: scale(1);
+            }
+
+            100% {
+                transform: scale(1.1);
+                border-color: #69f0ae;
+            }
+        }
+
+        .happy-theme .mouth {
+            width: 24px;
+            height: 14px;
+            background-color: #00e676;
+            border-radius: 0 0 20px 20px;
+            margin-top: 4px;
+            overflow: hidden;
+            position: relative;
+            animation: big-grin 0.8s infinite;
+        }
+
+        .happy-theme .mouth::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 16px;
+            height: 10px;
+            background-color: #ff80ab;
+            border-radius: 50%;
+        }
+
+        @keyframes big-grin {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.2);
+            }
+        }
+
+        .happy-theme .antenna-stem {
+            width: 6px;
+            height: 25px;
+            background-color: #cfd8dc;
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform-origin: bottom center;
+            z-index: -1;
+            animation: crazy-waggle 0.2s linear infinite;
+        }
+
+        @keyframes crazy-waggle {
+            0% {
+                transform: translateX(-50%) rotate(0deg);
+            }
+
+            25% {
+                transform: translateX(-50%) rotate(-15deg);
+            }
+
+            75% {
+                transform: translateX(-50%) rotate(15deg);
+            }
+
+            100% {
+                transform: translateX(-50%) rotate(0deg);
+            }
+        }
+
+        .happy-theme .antenna-bulb {
+            width: 14px;
+            height: 14px;
+            background-color: #ffd740;
+            border-radius: 50%;
+            position: absolute;
+            top: -14px;
+            left: -4px;
+            box-shadow: 0 0 15px #ffd740;
+            animation: strobe 0.4s infinite;
+        }
+
+        @keyframes strobe {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+                background-color: #ffd740;
+            }
+
+            50% {
+                opacity: 0.8;
+                transform: scale(1.3);
+                background-color: #ffff00;
+            }
+        }
+
+        .happy-theme .particles {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            z-index: -2;
+        }
+
+        .happy-theme .particle {
+            position: absolute;
+            opacity: 0;
+            animation: burst 1.5s ease-out infinite;
+        }
+
+        /* Particle shapes */
+        .happy-theme .star {
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-bottom: 10px solid #ffd740;
+            position: relative;
+        }
+
+        .happy-theme .star:after {
+            content: "";
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 10px solid #ffd740;
+            position: absolute;
+            left: -5px;
+            top: 3px;
+        }
+
+        .happy-theme .heart {
+            background-color: #ff4081;
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            position: relative;
+            transform: rotate(-45deg);
+        }
+
+        .happy-theme .heart:before,
+        .happy-theme .heart:after {
+            content: "";
+            background-color: #ff4081;
+            border-radius: 50%;
+            width: 10px;
+            height: 10px;
+            position: absolute;
+        }
+
+        .happy-theme .heart:before {
+            top: -5px;
+            left: 0;
+        }
+
+        .happy-theme .heart:after {
+            top: 0;
+            left: 5px;
+        }
+
+        .happy-theme .p1 {
+            left: 50%;
+            top: 50%;
+            animation-name: shoot-left;
+            animation-delay: 0s;
+        }
+
+        .happy-theme .p2 {
+            left: 50%;
+            top: 50%;
+            animation-name: shoot-right;
+            animation-delay: 0.1s;
+        }
+
+        .happy-theme .p3 {
+            left: 50%;
+            top: 50%;
+            animation-name: shoot-up-left;
+            animation-delay: 0.2s;
+        }
+
+        .happy-theme .p4 {
+            left: 50%;
+            top: 50%;
+            animation-name: shoot-up-right;
+            animation-delay: 0.3s;
+        }
+
+        .happy-theme .p5 {
+            left: 50%;
+            top: 50%;
+            animation-name: shoot-up;
+            animation-delay: 0.4s;
+        }
+
+        @keyframes shoot-left {
+            0% {
+                transform: translate(0, 0) scale(0) rotate(0deg);
+                opacity: 0;
+            }
+
+            10% {
+                opacity: 1;
+            }
+
+            100% {
+                transform: translate(-80px, -40px) scale(1) rotate(-180deg);
+                opacity: 0;
+            }
+        }
+
+        @keyframes shoot-right {
+            0% {
+                transform: translate(0, 0) scale(0) rotate(0deg);
+                opacity: 0;
+            }
+
+            10% {
+                opacity: 1;
+            }
+
+            100% {
+                transform: translate(80px, -40px) scale(1) rotate(180deg);
+                opacity: 0;
+            }
+        }
+
+        @keyframes shoot-up-left {
+            0% {
+                transform: translate(0, 0) scale(0) rotate(0deg);
+                opacity: 0;
+            }
+
+            10% {
+                opacity: 1;
+            }
+
+            100% {
+                transform: translate(-40px, -90px) scale(1.2) rotate(-90deg);
+                opacity: 0;
+            }
+        }
+
+        @keyframes shoot-up-right {
+            0% {
+                transform: translate(0, 0) scale(0) rotate(0deg);
+                opacity: 0;
+            }
+
+            10% {
+                opacity: 1;
+            }
+
+            100% {
+                transform: translate(40px, -90px) scale(1.2) rotate(90deg);
+                opacity: 0;
+            }
+        }
+
+        @keyframes shoot-up {
+            0% {
+                transform: translate(0, 0) scale(0) rotate(0deg);
+                opacity: 0;
+            }
+
+            10% {
+                opacity: 1;
+            }
+
+            100% {
+                transform: translate(0, -100px) scale(1.5) rotate(360deg);
+                opacity: 0;
+            }
+        }
+
+        /* =========================================
+           STATE 3: AVERAGE ROBOT CSS
+           ========================================= */
+        .average-theme .robot-head {
+            width: 140px;
+            height: 110px;
+            background-color: #ffffff;
+            border-radius: 45px;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 10px 25px rgba(179, 157, 219, 0.3), inset 0 -8px 0 rgba(0, 0, 0, 0.05);
+            animation: polite-hover 4s ease-in-out infinite;
+            z-index: 10;
+        }
+
+        @keyframes polite-hover {
+
+            0%,
+            100% {
+                transform: translateY(0) rotate(0deg);
+            }
+
+            50% {
+                transform: translateY(-8px) rotate(2deg);
+            }
+        }
+
+        .average-theme .face-screen {
+            width: 100px;
+            height: 65px;
+            background-color: #2b3040;
+            border-radius: 28px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            border: 4px solid #b39ddb;
+            box-shadow: inset 0 0 10px rgba(179, 157, 219, 0.2);
+        }
+
+        .average-theme .eyes-container {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 6px;
+        }
+
+        .average-theme .eye {
+            width: 14px;
+            height: 14px;
+            background-color: #b39ddb;
+            border-radius: 50%;
+            position: relative;
+            box-shadow: 0 0 8px rgba(179, 157, 219, 0.6);
+            animation: slow-blink 4s infinite;
+        }
+
+        @keyframes slow-blink {
+
+            0%,
+            45%,
+            55%,
+            100% {
+                transform: scaleY(1);
+            }
+
+            50% {
+                transform: scaleY(0.1);
+            }
+        }
+
+        .average-theme .mouth {
+            width: 16px;
+            height: 6px;
+            border-bottom: 3px solid #b39ddb;
+            border-radius: 50%;
+            opacity: 0.9;
+            animation: slight-smirk 5s infinite;
+        }
+
+        @keyframes slight-smirk {
+
+            0%,
+            100% {
+                transform: rotate(0deg);
+                width: 16px;
+            }
+
+            50% {
+                transform: rotate(-5deg);
+                width: 18px;
+            }
+        }
+
+        .average-theme .antenna-stem {
+            width: 6px;
+            height: 25px;
+            background-color: #cfd8dc;
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: -1;
+            transform-origin: bottom center;
+            animation: slow-sway 4s ease-in-out infinite;
+        }
+
+        @keyframes slow-sway {
+
+            0%,
+            100% {
+                transform: translateX(-50%) rotate(-5deg);
+            }
+
+            50% {
+                transform: translateX(-50%) rotate(5deg);
+            }
+        }
+
+        .average-theme .antenna-bulb {
+            width: 14px;
+            height: 14px;
+            background-color: #b39ddb;
+            border-radius: 50%;
+            position: absolute;
+            top: -14px;
+            left: -4px;
+            box-shadow: 0 0 8px #b39ddb;
+            animation: gentle-pulse 3s infinite;
+        }
+
+        @keyframes gentle-pulse {
+
+            0%,
+            100% {
+                opacity: 0.7;
+            }
+
+            50% {
+                opacity: 1;
+            }
+        }
+
+        /* Shared Cheek Styles (overridden by themes generally, but basic fallback) */
+        .cheek {
+            width: 10px;
+            height: 6px;
+            background-color: #ff80ab;
+            border-radius: 50%;
+            position: absolute;
+            bottom: 14px;
+            opacity: 0.3;
+        }
+
+        .cheek.left {
+            left: 18px;
+        }
+
+        .cheek.right {
+            right: 18px;
+        }
+
+        .happy-theme .cheek {
+            opacity: 0.8;
+            animation: pulse-cheeks 0.8s infinite;
+            width: 12px;
+            height: 8px;
+            bottom: 14px;
+        }
+
+        .happy-theme .cheek.left {
+            left: 14px;
+        }
+
+        .happy-theme .cheek.right {
+            right: 14px;
+        }
+
+        @keyframes pulse-cheeks {
+
+            0%,
+            100% {
+                opacity: 0.6;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 1;
+                transform: scale(1.2);
+            }
+        }
+
+        /* =========================================
+           STATE 4: ANALYZING ROBOT CSS
+           ========================================= */
+        .analyzing-theme .robot-head {
+            width: 140px;
+            height: 110px;
+            background-color: #ffffff;
+            border-radius: 45px;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2), inset 0 -8px 0 rgba(0, 0, 0, 0.05);
+            animation: happy-bounce 3s ease-in-out infinite;
+            z-index: 10;
+        }
+
+        @keyframes happy-bounce {
+
+            0%,
+            100% {
+                transform: translateY(0) rotate(0deg);
+            }
+
+            25% {
+                transform: translateY(-5px) rotate(-3deg);
+            }
+
+            50% {
+                transform: translateY(-12px) rotate(0deg);
+            }
+
+            75% {
+                transform: translateY(-5px) rotate(3deg);
+            }
+        }
+
+        .analyzing-theme .face-screen {
+            width: 100px;
+            height: 65px;
+            background-color: #2b3040;
+            border-radius: 28px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            border: 4px solid #e3f2fd;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .analyzing-theme .eyes-container {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 4px;
+            animation: lookAround 5s infinite;
+        }
+
+        .analyzing-theme .eye {
+            width: 14px;
+            height: 14px;
+            background-color: #00e676;
+            border-radius: 50%;
+            position: relative;
+            box-shadow: 0 0 12px #00e676;
+        }
+
+        .analyzing-theme .eye.left {
+            animation: blink 3.5s infinite;
+        }
+
+        .analyzing-theme .eye.right {
+            animation: wink 5s infinite;
+        }
+
+        @keyframes blink {
+
+            0%,
+            48%,
+            52%,
+            100% {
+                transform: scaleY(1);
+            }
+
+            50% {
+                transform: scaleY(0.1);
+            }
+        }
+
+        @keyframes wink {
+
+            0%,
+            48%,
+            52%,
+            70%,
+            76%,
+            100% {
+                transform: scaleY(1);
+            }
+
+            50% {
+                transform: scaleY(0.1);
+            }
+
+            73% {
+                transform: scaleY(0.1);
+            }
+        }
+
+        @keyframes lookAround {
+
+            0%,
+            10% {
+                transform: translate(0, 0);
+            }
+
+            20% {
+                transform: translate(-8px, 2px);
+            }
+
+            40% {
+                transform: translate(-8px, 2px);
+            }
+
+            50% {
+                transform: translate(8px, -2px);
+            }
+
+            70% {
+                transform: translate(8px, -2px);
+            }
+
+            80% {
+                transform: translate(0, 0);
+            }
+
+            100% {
+                transform: translate(0, 0);
+            }
+        }
+
+        .analyzing-theme .mouth {
+            width: 16px;
+            height: 8px;
+            border-bottom: 3px solid #00e676;
+            border-radius: 0 0 10px 10px;
+            animation: smile 4s infinite;
+        }
+
+        @keyframes smile {
+
+            0%,
+            100% {
+                width: 16px;
+                height: 8px;
+            }
+
+            50% {
+                width: 20px;
+                height: 10px;
+            }
+        }
+
+        .analyzing-theme .scan-line {
+            position: absolute;
+            width: 100%;
+            height: 30%;
+            background: linear-gradient(to bottom, transparent, rgba(0, 230, 118, 0.15), transparent);
+            top: -100%;
+            left: 0;
+            animation: scan 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        @keyframes scan {
+            0% {
+                top: -50%;
+            }
+
+            100% {
+                top: 150%;
+            }
+        }
+
+        .analyzing-theme .antenna-stem {
+            width: 6px;
+            height: 25px;
+            background-color: #cfd8dc;
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: -1;
+            transform-origin: bottom center;
+            animation: waggle 3s ease-in-out infinite;
+        }
+
+        @keyframes waggle {
+
+            0%,
+            100% {
+                transform: translateX(-50%) rotate(0deg);
+            }
+
+            25% {
+                transform: translateX(-50%) rotate(-15deg);
+            }
+
+            75% {
+                transform: translateX(-50%) rotate(15deg);
+            }
+        }
+
+        .analyzing-theme .antenna-bulb {
+            width: 14px;
+            height: 14px;
+            background-color: #ff5252;
+            border-radius: 50%;
+            position: absolute;
+            top: -14px;
+            left: -4px;
+            box-shadow: 0 0 8px #ff5252;
+            animation: blinkLight 2s infinite;
+        }
+
+        @keyframes blinkLight {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.8;
+                transform: scale(1.1);
+            }
+        }
+
+        .analyzing-theme .gear {
+            position: absolute;
+            border: 3px dashed #ffcc80;
+            border-radius: 50%;
+            opacity: 0.8;
+            z-index: 5;
+        }
+
+        .analyzing-theme .gear-1 {
+            width: 30px;
+            height: 30px;
+            top: -15px;
+            right: -15px;
+            animation: spin 5s linear infinite;
+        }
+
+        .analyzing-theme .gear-2 {
+            width: 20px;
+            height: 20px;
+            bottom: -5px;
+            left: -10px;
+            border-color: #ce93d8;
+            animation: spin 4s linear infinite reverse;
+        }
+
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .analyzing-theme .confetti {
+            position: absolute;
+            opacity: 0;
+            animation: floatUp 3s infinite ease-out;
+            z-index: -1;
+        }
+
+        .analyzing-theme .confetti.c1 {
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-bottom: 12px solid #80deea;
+            left: -25px;
+            top: 40%;
+            animation-delay: 0s;
+        }
+
+        .analyzing-theme .confetti.c2 {
+            width: 10px;
+            height: 10px;
+            background-color: #ffcc80;
+            border-radius: 50%;
+            right: -25px;
+            top: 20%;
+            animation-delay: 1.5s;
+        }
+
+        .analyzing-theme .confetti.c3 {
+            width: 8px;
+            height: 8px;
+            background-color: #ce93d8;
+            left: -15px;
+            top: 70%;
+            animation-delay: 0.8s;
+            transform: rotate(45deg);
+        }
+
+        .analyzing-theme .confetti.c4 {
+            width: 12px;
+            height: 6px;
+            background-color: #a5d6a7;
+            right: -20px;
+            top: 50%;
+            animation-delay: 2.2s;
+        }
+
+        @keyframes floatUp {
+            0% {
+                transform: translateY(10px) rotate(0deg);
+                opacity: 0;
+            }
+
+            20% {
+                opacity: 1;
+            }
+
+            100% {
+                transform: translateY(-40px) rotate(180deg);
+                opacity: 0;
+            }
+        }
+
+        /* NEW: Playful Pop Animation */
+        @keyframes pop-in {
+            0% {
+                transform: scale(0);
+                opacity: 0;
+            }
+
+            70% {
+                transform: scale(1.2);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .animate-pop {
+            animation: pop-in 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+    </style>
+</head>
+
+<body
+    class="h-screen w-screen overflow-hidden bg-dark text-white font-sans antialiased selection:bg-secondary selection:text-white">
+
+    <!-- Main Container -->
+    <main class="relative h-full w-full flex flex-col items-center justify-center">
+
+        <!-- Video Feed Background -->
+        <video id="webcam"
+            class="absolute inset-0 h-full w-full object-cover z-0 opacity-50 transition-opacity duration-1000" autoplay
+            playsinline muted></video>
+
+        <!-- Dark Overlay for Readability -->
+        <div class="absolute inset-0 bg-gradient-to-t from-dark/90 via-dark/40 to-dark/40 z-0"></div>
+
+        <!-- API Key Input (Temporary / Setup Phase) -->
+        <div id="setup-panel"
+            class="absolute inset-0 z-50 flex items-center justify-center bg-dark/95 backdrop-blur-xl transition-all duration-500">
+            <div
+                class="glass-panel p-8 rounded-3xl max-w-md w-full mx-4 flex flex-col gap-6 transform transition-all hover:scale-[1.02]">
+                <div class="text-center">
+                    <h1
+                        class="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary mb-2">
+                        RHYTHM HANDS</h1>
+                    <p class="text-white/60 text-sm">Enter your Gemini API Key to play.</p>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="text-xs font-bold tracking-widest text-primary uppercase">API Key</label>
+                    <input type="password" id="api-key-input" placeholder="AIzamFy..."
+                        class="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all">
+                </div>
+
+                <button id="init-btn"
+                    class="w-full bg-gradient-to-r from-primary to-secondary hover:from-white hover:to-white hover:text-black text-black font-black py-4 rounded-xl text-lg uppercase tracking-widest transition-all duration-300 transform active:scale-95 shadow-[0_0_20px_rgba(0,243,255,0.3)] hover:shadow-[0_0_30px_rgba(255,255,255,0.5)]">
+                    Activate System
+                </button>
+            </div>
+        </div>
+
+        <!-- MUTE TOGGLE (Fixed Top Right) -->
+        <button id="mute-btn" onclick="toggleMute()"
+            class="fixed top-6 right-6 z-50 p-3 bg-black/40 backdrop-blur-md border border-white/10 rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-all duration-300 opacity-0 pointer-events-none">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+            </svg>
+        </button>
+
+        <!-- HUD: Top Bar -->
+        <div class="absolute top-0 left-0 w-full p-6 z-20 flex justify-between items-start opacity-0 pointer-events-none transition-opacity duration-500"
+            id="game-ui">
+            <div class="glass-panel px-4 py-2 rounded-full flex items-center gap-2">
+                <div class="w-3 h-3 rounded-full bg-green-400 animate-pulse"></div>
+                <span class="text-sm font-bold tracking-wider">CAM: ACTIVE</span>
+            </div>
+            <!-- DEBUG: Real-time finger count -->
+            <div id="finger-debug" class="glass-panel px-4 py-2 rounded-full hidden">
+                <span class="text-2xl font-black text-primary" id="finger-count-display">0</span>
+                <span class="text-xs text-white/50 ml-1">FINGERS</span>
+            </div>
+
+
+            <div class="text-right mr-20">
+                <h2 class="text-5xl font-black italic text-stroke">000</h2>
+                <p class="text-xs font-bold text-primary tracking-[0.2em] uppercase">Score</p>
+            </div>
+        </div>
+
+        <!-- HUD: Center (Sequence Display) -->
+        <div id="sequence-display"
+            class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex flex-col items-center gap-4 opacity-0 transition-opacity duration-500">
+            <div class="glass-panel px-6 py-3 rounded-2xl border border-white/10 shadow-[0_0_30px_rgba(0,0,0,0.3)]">
+                <!-- Warning: Dynamic content will go here -->
+                <div id="beat-container" class="flex items-center gap-2">
+                    <!-- Numbers will be injected here -->
+                </div>
+            </div>
+            <div class="text-center space-y-1">
+                <div class="h-1 w-24 bg-gray-800 rounded-full overflow-hidden mx-auto">
+                    <div id="beat-bar" class="h-full bg-primary w-0"></div>
+                </div>
+                <p class="text-[10px] font-mono text-primary/80 tracking-widest">100 BPM</p>
+            </div>
+        </div>
+
+
+        <!-- Countdown Overlay -->
+        <div id="countdown-overlay"
+            class="absolute inset-0 z-40 flex items-center justify-center pointer-events-none hidden">
+            <h1
+                class="text-9xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary animate-pulse scale-[2] p-32 leading-relaxed -translate-y-48 drop-shadow-[0_5px_5px_rgba(0,0,0,1)]">
+                GET READY
+            </h1>
+        </div>
+        <!-- HUD: Bottom Controls -->
+        <div class="absolute bottom-10 z-20 opacity-0 pointer-events-none transition-opacity duration-500"
+            id="controls-ui">
+            <button id="start-game-btn"
+                class="group relative px-8 py-4 bg-transparent overflow-hidden rounded-full cursor-pointer pointer-events-auto">
+                <div
+                    class="absolute inset-0 w-full h-full bg-gradient-to-r from-primary to-secondary opacity-20 group-hover:opacity-100 transition-opacity duration-300">
+                </div>
+                <div
+                    class="absolute inset-0 w-full h-full border border-white/30 rounded-full group-hover:border-transparent transition-colors">
+                </div>
+                <span
+                    class="relative text-xl font-black italic uppercase tracking-widest group-hover:text-black transition-colors">Start
+                    Groove</span>
+            </button>
+        </div>
+
+        <!-- Feedback Overlay -->
+        <div id="feedback-overlay"
+            class="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center hidden opacity-0 transition-opacity duration-500">
+
+            <!-- ROBOT ANIMATION STATES -->
+            <!-- STATE 1: SAD ROBOT STRUCTURE -->
+            <div id="robot-sad" class="robot-wrapper sad-theme">
+                <div class="antenna-stem">
+                    <div class="antenna-bulb"></div>
+                </div>
+                <div class="robot-head">
+                    <div class="face-screen">
+                        <div class="eyes-container">
+                            <div class="eye left"></div>
+                            <div class="eye right"></div>
+                            <div class="tear stream-1"></div>
+                            <div class="tear stream-2"></div>
+                            <div class="tear stream-3"></div>
+                            <div class="tear stream-4"></div>
+                        </div>
+                        <div class="mouth"></div>
+                        <div class="cheek left"></div>
+                        <div class="cheek right"></div>
+                    </div>
+                </div>
+                <div class="puddle-container">
+                    <div class="puddle"></div>
+                    <div class="splash s1"></div>
+                    <div class="splash s2"></div>
+                    <div class="splash s3"></div>
+                </div>
+            </div>
+
+            <!-- STATE 2: HAPPY ROBOT STRUCTURE -->
+            <div id="robot-happy" class="robot-wrapper happy-theme">
+                <div class="particles">
+                    <div class="particle star p1"></div>
+                    <div class="particle heart p2"></div>
+                    <div class="particle star p3"></div>
+                    <div class="particle heart p4"></div>
+                    <div class="particle star p5"></div>
+                </div>
+                <div class="antenna-stem">
+                    <div class="antenna-bulb"></div>
+                </div>
+                <div class="robot-head">
+                    <div class="face-screen">
+                        <div class="eyes-container">
+                            <div class="eye left"></div>
+                            <div class="eye right"></div>
+                        </div>
+                        <div class="mouth"></div>
+                        <div class="cheek left"></div>
+                        <div class="cheek right"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STATE 3: AVERAGE ROBOT STRUCTURE -->
+            <div id="robot-average" class="robot-wrapper average-theme active">
+                <div class="antenna-stem">
+                    <div class="antenna-bulb"></div>
+                </div>
+                <div class="robot-head">
+                    <div class="face-screen">
+                        <div class="eyes-container">
+                            <div class="eye left"></div>
+                            <div class="eye right"></div>
+                        </div>
+                        <div class="mouth"></div>
+                        <div class="cheek left"></div>
+                        <div class="cheek right"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STATE 4: ANALYZING ROBOT STRUCTURE -->
+            <div id="robot-analyzing" class="robot-wrapper analyzing-theme">
+                <div class="antenna-stem">
+                    <div class="antenna-bulb"></div>
+                </div>
+                <div class="robot-head">
+                    <div class="face-screen">
+                        <div class="scan-line"></div>
+                        <div class="eyes-container">
+                            <div class="eye left"></div>
+                            <div class="eye right"></div>
+                        </div>
+                        <div class="mouth"></div>
+                        <div class="cheek left"></div>
+                        <div class="cheek right"></div>
+                    </div>
+                </div>
+                <div class="gear gear-1"></div>
+                <div class="gear gear-2"></div>
+                <div class="confetti c1"></div>
+                <div class="confetti c2"></div>
+                <div class="confetti c3"></div>
+                <div class="confetti c4"></div>
+            </div>
+
+            <h1 id="feedback-title" class="text-6xl font-black uppercase text-glow animate-pulse">ANALYZING...</h1>
+            <div id="feedback-text" class="text-2xl mt-8 max-w-2xl text-center font-bold px-4">The AI Judge is
+                watching
+                your performance...</div>
+
+            <div class="flex gap-8 mt-12">
+                <button id="try-again-btn"
+                    class="text-white/40 text-xs font-bold uppercase tracking-[0.2em] hover:text-white transition-colors border-b border-white/0 hover:border-white/50 pb-1">
+                    Try Again
+                </button>
+                <button id="back-to-menu-btn"
+                    class="text-white/40 text-xs font-bold uppercase tracking-[0.2em] hover:text-white transition-colors border-b border-white/0 hover:border-white/50 pb-1">
+                    Back to Menu
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // --- Configuration ---
+        const BPM = 100;
+        const BEAT_INTERVAL = 60000 / BPM;
+
+        // --- Game Data ---
+        // DOOM STYLE DIFFICULTY
+        const DIFFICULTY_LEVELS = {
+            'EASY': { name: "VIBE CHECK", bpm: 90, length: 6, color: "text-green-400" },
+            'MEDIUM': { name: "IN THE GROOVE", bpm: 110, length: 10, color: "text-yellow-400" },
+            'HARD': { name: "HYPER FOCUS", bpm: 130, length: 13, color: "text-orange-500" },
+            'NIGHTMARE': { name: "VIRTUOSO", bpm: 150, length: 16, color: "text-red-600" }
+        };
+
+        let SEQUENCE = [];
+
+        function generateSequence() {
+            const level = DIFFICULTY_LEVELS[state.difficulty];
+            return Array.from({ length: level.length }, () => Math.floor(Math.random() * 5) + 1);
+        }
+
+        // --- State ---
+        let state = {
+            apiKey: localStorage.getItem('gemini_api_key') || 'AIzaSyBBv7f354JxU0vDren779tAdSBNpe5n6us',
+            hasCamera: false,
+            isPlaying: false,
+            difficulty: 'EASY', // Default
+            audioCtx: null,
+            musicMasterGain: null, // NEW: Global Music Volume Control
+            isMuted: false,
+            stream: null,
+            videoEl: document.getElementById('webcam'),
+            musicBuffer: null,
+            musicSource: null,
+            scoreMusicBuffer: null,
+            scoreMusicSource: null,
+            introMusicBuffer: null,
+            introMusicSource: null,
+            capturedFrames: [], // SNAPSHOT STRATEGY
+            // MediaPipe Hand Detection
+            handLandmarker: null,
+            lastDetectedFingers: 0,
+            detectedSequence: [] // Stores finger counts for each beat
+        };
+
+        // NEW: Hidden Canvas for Snapshots
+        const captureCanvas = document.createElement('canvas');
+        captureCanvas.width = 640;
+        captureCanvas.height = 480;
+        const captureCtx = captureCanvas.getContext('2d');
+
+        function toggleMute() {
+            state.isMuted = !state.isMuted;
+            const btn = document.getElementById('mute-btn');
+
+            if (state.musicMasterGain) {
+                // Smooth fade
+                const now = state.audioCtx.currentTime;
+                state.musicMasterGain.gain.cancelScheduledValues(now);
+                state.musicMasterGain.gain.linearRampToValueAtTime(state.isMuted ? 0 : 1, now + 0.1);
+            }
+
+            // Toggle Icon (Simple text or svg swap)
+            if (state.isMuted) {
+                btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" /></svg>`;
+                btn.classList.add('text-red-500');
+            } else {
+                btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>`;
+                btn.classList.remove('text-red-500');
+            }
+        }
+
+        // Helper: Get mode (most common value) from an array
+        function getMode(arr) {
+            if (!arr || arr.length === 0) return 0;
+            const counts = {};
+            let maxCount = 0;
+            let mode = arr[0];
+
+            for (const val of arr) {
+                counts[val] = (counts[val] || 0) + 1;
+                if (counts[val] > maxCount) {
+                    maxCount = counts[val];
+                    mode = val;
+                }
+            }
+            return mode;
+        }
+
+        // --- MediaPipe Hand Detection ---
+        async function initHandLandmarker() {
+            try {
+                const vision = await window.FilesetResolver.forVisionTasks(
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
+                );
+                state.handLandmarker = await window.HandLandmarker.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+                        delegate: "GPU"
+                    },
+                    runningMode: "VIDEO",
+                    numHands: 1
+                });
+                console.log("HandLandmarker initialized!");
+            } catch (err) {
+                console.error("MediaPipe init failed:", err);
+            }
+        }
+
+        // Count extended fingers from 21 landmarks (IMPROVED ALGORITHM)
+        function countFingers(landmarks) {
+            if (!landmarks || landmarks.length < 21) return 0;
+
+            // Landmark indices:
+            // Wrist=0, Thumb: CMC=1, MCP=2, IP=3, TIP=4
+            // Index: MCP=5, PIP=6, DIP=7, TIP=8
+            // Middle: MCP=9, PIP=10, DIP=11, TIP=12
+            // Ring: MCP=13, PIP=14, DIP=15, TIP=16
+            // Pinky: MCP=17, PIP=18, DIP=19, TIP=20
+
+            let count = 0;
+
+            // THUMB: Compare tip to IP joint (more reliable than x-distance)
+            // Thumb is extended if tip is above/beyond IP joint
+            const thumbTip = landmarks[4];
+            const thumbIP = landmarks[3];
+            const thumbMCP = landmarks[2];
+            const wrist = landmarks[0];
+
+            // Use distance from wrist: if thumb tip is further than MCP, it's extended
+            const tipToWrist = Math.hypot(thumbTip.x - wrist.x, thumbTip.y - wrist.y);
+            const mcpToWrist = Math.hypot(thumbMCP.x - wrist.x, thumbMCP.y - wrist.y);
+            if (tipToWrist > mcpToWrist * 1.2) { // 20% further = extended
+                count++;
+            }
+
+            // OTHER FINGERS: tip.y < pip.y means finger is extended
+            // (In screen coordinates, y increases downward, so smaller y = higher up)
+            const fingerData = [
+                { tip: 8, pip: 6 },   // Index
+                { tip: 12, pip: 10 }, // Middle
+                { tip: 16, pip: 14 }, // Ring
+                { tip: 20, pip: 18 }  // Pinky
+            ];
+
+            for (const finger of fingerData) {
+                const tip = landmarks[finger.tip];
+                const pip = landmarks[finger.pip];
+                // Finger is extended if tip is above PIP (lower y value)
+                if (tip.y < pip.y - 0.02) { // Small threshold to avoid noise
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        // Detection loop (runs during gameplay, THROTTLED to prevent freeze)
+        let lastDetectionTime = 0;
+        const DETECTION_INTERVAL = 100; // Run detection every 100ms (10Hz)
+
+        function detectHands(timestamp) {
+            if (!state.handLandmarker || !state.videoEl) return;
+            if (!state.isPlaying) return; // Only detect during gameplay
+
+            // Throttle: Skip if less than 100ms since last detection
+            if (timestamp - lastDetectionTime < DETECTION_INTERVAL) {
+                requestAnimationFrame(detectHands);
+                return;
+            }
+            lastDetectionTime = timestamp;
+
+            const results = state.handLandmarker.detectForVideo(state.videoEl, timestamp);
+            if (results.landmarks && results.landmarks.length > 0) {
+                state.lastDetectedFingers = countFingers(results.landmarks[0]);
+            } else {
+                state.lastDetectedFingers = 0; // No hand detected
+            }
+
+            // Update debug display
+            const debugDisplay = document.getElementById('finger-count-display');
+            if (debugDisplay) {
+                debugDisplay.innerText = state.lastDetectedFingers;
+            }
+
+            requestAnimationFrame(detectHands);
+        }
+
+
+        function captureFrame() {
+            if (!state.videoEl) return;
+            // Draw current video frame to canvas
+            captureCtx.drawImage(state.videoEl, 0, 0, captureCanvas.width, captureCanvas.height);
+            // Get JPEG Data URL (lower quality for speed is fine, but 0.8 is good balance)
+            const dataUrl = captureCanvas.toDataURL('image/jpeg', 0.8);
+            state.capturedFrames.push(dataUrl);
+            console.log(`Captured Frame ${state.capturedFrames.length}`);
+        }
+
+        // --- Elements ---
+        const setupPanel = document.getElementById('setup-panel');
+        const gameUI = document.getElementById('game-ui');
+        const controlsUI = document.getElementById('controls-ui');
+        const sequenceDisplay = document.getElementById('sequence-display');
+        const apiKeyInput = document.getElementById('api-key-input');
+        const initBtn = document.getElementById('init-btn');
+
+        // --- Initialization ---
+        apiKeyInput.value = state.apiKey;
+
+        // FORCE HIDE API KEY INPUT (Per user request: "We should not ask the user")
+        // We assume the hardcoded key or localStorage key is valid.
+        document.querySelector('#setup-panel p').innerText = "System Ready.";
+        apiKeyInput.parentElement.style.display = 'none';
+        initBtn.innerText = "ENTER STUDIO";
+
+        initBtn.addEventListener('click', async () => {
+            let key = state.apiKey;
+
+            // If input is visible (fallback), update key from input
+            if (apiKeyInput.offsetParent !== null) {
+                key = apiKeyInput.value.trim();
+                if (!key) {
+                    alert('Please enter an API Key to proceed.');
+                    return;
+                }
+                state.apiKey = key;
+                localStorage.setItem('gemini_api_key', key);
+            }
+
+            await initHardware();
+        });
+
+        async function loadAudioBuffer(url) {
+            try {
+                const response = await fetch(url);
+                return await state.audioCtx.decodeAudioData(await response.arrayBuffer());
+            } catch (e) {
+                console.error(`Failed to load ${url}:`, e);
+                return null;
+            }
+        }
+
+        async function initHardware() {
+            initBtn.innerText = "Accessing Camera...";
+            initBtn.disabled = true;
+
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                state.audioCtx = new AudioContext();
+
+                // NEW: Music Master Gain (for global mute)
+                state.musicMasterGain = state.audioCtx.createGain();
+                state.musicMasterGain.gain.value = state.isMuted ? 0 : 1;
+                state.musicMasterGain.connect(state.audioCtx.destination);
+
+                // LOAD BACKGROUND MUSIC
+                try {
+                    const response = await fetch('in-the-groove-music.mp3');
+                    state.musicBuffer = await state.audioCtx.decodeAudioData(await response.arrayBuffer());
+                    console.log("Background music loaded!");
+                } catch (e) {
+                    console.error("BG Music Load Error:", e);
+                }
+
+                // LOAD SCORE MUSIC
+                loadAudioBuffer('Scores-screen.mp3').then(buffer => {
+                    state.scoreMusicBuffer = buffer;
+                });
+
+                // LOAD INTRO MUSIC
+                loadAudioBuffer('before-game.mp3').then(buffer => {
+                    state.introMusicBuffer = buffer;
+                    // Play Intro Music IMMEDIATELY (if hardware ready)
+                    if (state.introMusicBuffer) {
+                        // Stop if already playing
+                        if (state.introMusicSource) try { state.introMusicSource.stop(); } catch (e) { }
+
+                        state.introMusicSource = state.audioCtx.createBufferSource();
+                        state.introMusicSource.buffer = state.introMusicBuffer;
+                        state.introMusicSource.loop = true;
+
+                        // Volume Handling via Master Gain
+                        const introGain = state.audioCtx.createGain();
+                        introGain.gain.value = 0.2; // 20% relative volume
+
+                        state.introMusicSource.connect(introGain);
+                        introGain.connect(state.musicMasterGain); // Connect to Master
+
+                        state.introMusicSource.start(0);
+                    }
+                });
+
+
+                // Camera Access
+                state.stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 1280, height: 720, facingMode: "user" },
+                    audio: false
+                });
+
+                state.videoEl.srcObject = state.stream;
+                state.videoEl.onloadedmetadata = () => {
+                    state.videoEl.play();
+                    state.videoEl.classList.remove('opacity-50');
+
+                    // Transition UI
+                    setupPanel.style.opacity = '0';
+                    setupPanel.style.pointerEvents = 'none';
+
+                    gameUI.classList.remove('opacity-0');
+                    gameUI.classList.remove('pointer-events-none');
+
+                    // Center Controls
+                    controlsUI.classList.remove('opacity-0');
+                    controlsUI.classList.remove('pointer-events-none');
+
+                    // Reveal Mute Button
+                    const muteBtn = document.getElementById('mute-btn');
+                    if (muteBtn) muteBtn.classList.remove('opacity-0', 'pointer-events-none');
+
+                    state.hasCamera = true;
+
+                    // Initialize MediaPipe Hand Landmarker
+                    initHandLandmarker();
+
+                    // Initialize Game Engine
+                    initGame();
+                };
+
+            } catch (err) {
+                console.error("Hardware Init Failed:", err);
+                alert("Error: " + err.message);
+                initBtn.innerText = "Retry Access";
+                initBtn.disabled = false;
+            }
+        }
+
+
+        // --- Rhythm Engine ---
+        class RhythmEngine {
+            constructor(audioCtx, bpm, onBeatCallback) {
+                this.audioCtx = audioCtx;
+                this.bpm = bpm;
+                this.onBeatCallback = onBeatCallback;
+
+                this.nextNoteTime = 0.0; // when the next note is due.
+                this.timerID = null;
+                this.lookahead = 25.0; // How frequently to call scheduling function (in milliseconds)
+                this.scheduleAheadTime = 0.2; // WIDENED WINDOW to 0.2s (was 0.1) to catch first beat
+                this.currentBeat = 0; // 0 - 3 (measure)
+                this.totalBeats = 0;
+                this.isRunning = false;
+            }
+
+            nextNote() {
+                const secondsPerBeat = 60.0 / this.bpm;
+                this.nextNoteTime += secondsPerBeat;
+
+                this.currentBeat++;
+                if (this.currentBeat === 4) {
+                    this.currentBeat = 0;
+                }
+                this.totalBeats++;
+            }
+
+            scheduleNote(beatNumber, time, capturedTotalBeats) {
+                // Audio Tick - RESTORED (Subtle overlay on music)
+                const osc = this.audioCtx.createOscillator();
+                const envelope = this.audioCtx.createGain();
+
+                osc.connect(envelope);
+                envelope.connect(this.audioCtx.destination);
+
+                // Sound properties
+                if (beatNumber === 0) {
+                    osc.frequency.value = 1200.0; // High sharp tick for beat 1
+                } else {
+                    osc.frequency.value = 800.0;  // Lower tick
+                }
+
+                // Very short, percussive tick
+                envelope.gain.value = 0.15;
+                envelope.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+
+                osc.start(time);
+                osc.stop(time + 0.05);
+
+                // Dispatch Visual Event
+                if (this.onBeatCallback) {
+                    const delay = (time - this.audioCtx.currentTime) * 1000;
+                    setTimeout(() => {
+                        this.onBeatCallback(beatNumber, capturedTotalBeats);
+                    }, Math.max(0, delay));
+                }
+            }
+
+            scheduler() {
+                while (this.nextNoteTime < this.audioCtx.currentTime + this.scheduleAheadTime) {
+                    this.scheduleNote(this.currentBeat, this.nextNoteTime, this.totalBeats);
+                    this.nextNote();
+                }
+                if (this.isRunning) {
+                    this.timerID = setTimeout(() => this.scheduler(), this.lookahead);
+                }
+            }
+
+            start() {
+                if (this.isRunning) return;
+                this.isRunning = true;
+
+                // FORCE IMMEDIATE START for Beat 0
+                const now = this.audioCtx.currentTime;
+
+                this.currentBeat = 0;
+                this.totalBeats = 0;
+
+                // 1. Play First Beat NOW (Pass 0 as totalBeats explicitly)
+                this.scheduleNote(0, now, 0);
+
+                // 2. Setup Scheduler to pick up at Beat 1
+                const secondsPerBeat = 60.0 / this.bpm;
+                this.nextNoteTime = now + secondsPerBeat;
+
+                // Manually advance state for the *next* cycle
+                this.currentBeat = 1;
+                this.totalBeats = 1;
+
+                // 3. Start Loop
+                this.scheduler();
+            }
+
+            stop() {
+                this.isRunning = false;
+                if (this.timerID) clearTimeout(this.timerID);
+            }
+        }
+
+
+        // --- Game Logic ---
+        let rhythmEngine = null;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+
+        // Element Refs
+        const beatContainer = document.getElementById('beat-container');
+        const beatBar = document.getElementById('beat-bar');
+        const scoreDisplay = document.querySelector('#game-ui h2');
+
+        function updateSequenceDisplay(activeIndex = -1) {
+            // Only rebuild DOM if sequence length changed (or empty)
+            if (beatContainer.childElementCount !== SEQUENCE.length) {
+                beatContainer.innerHTML = '';
+                SEQUENCE.forEach((num) => {
+                    const span = document.createElement('span');
+                    span.innerText = num;
+                    beatContainer.appendChild(span);
+                });
+            }
+
+            // Update Classes
+            const spans = beatContainer.children;
+            for (let i = 0; i < spans.length; i++) {
+                const span = spans[i];
+                span.innerText = SEQUENCE[i];
+
+                let classes = "transition-all duration-200 font-black flex items-center justify-center w-12 h-16 ";
+
+                if (i === activeIndex) {
+                    classes += "text-6xl text-glow scale-110 text-white z-10 translate-y-[-5px]";
+                } else {
+                    classes += "text-4xl text-white/30 grayscale";
+                }
+
+                span.className = classes;
+            }
+        }
+
+        // Global ref for cleanup
+        let difficultyContainer = null;
+
+        function renderDifficultySelector() {
+            // Check global ref first, or DOM
+            let container = document.getElementById('difficulty-selector');
+
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'difficulty-selector'; // CRITICAL MISSING ID
+                container.className = "flex flex-col gap-2 mb-8 items-center z-50 relative pointer-events-auto";
+
+                // Insert before the Start Button in Controls UI
+                const startBtn = document.getElementById('start-game-btn');
+                if (startBtn && startBtn.parentNode) {
+                    startBtn.parentNode.insertBefore(container, startBtn);
+                } else {
+                    // Fallback if start button not found (shouldn't happen)
+                    document.getElementById('controls-ui').appendChild(container);
+                }
+            }
+
+            difficultyContainer = container; // Update global ref
+
+            difficultyContainer.innerHTML = '';
+
+            // Title
+            const title = document.createElement('div');
+            title.className = "text-xs font-bold text-white/40 tracking-[0.2em] uppercase mb-3 text-center";
+            title.innerText = "CHOOSE YOUR DIFFICULTY";
+            difficultyContainer.appendChild(title);
+
+            // Container for Vertical Pills
+            const pillsDetails = document.createElement('div');
+            pillsDetails.className = "flex flex-col gap-4 items-center w-full max-w-sm mx-auto";
+
+            const levels = Object.keys(DIFFICULTY_LEVELS);
+
+            levels.forEach(key => {
+                const level = DIFFICULTY_LEVELS[key];
+                const isActive = state.difficulty === key;
+
+                const btn = document.createElement('button');
+                // Style: Vertically stacked, wider, bigger
+                let classes = "w-full py-4 rounded-full text-sm font-black tracking-[0.2em] uppercase transition-all duration-300 border border-white/20 ";
+
+                if (isActive) {
+                    classes += `bg-white/10 ${level.color} shadow-[0_0_20px_rgba(255,255,255,0.15)] scale-105 border-white/50`;
+                } else {
+                    classes += "bg-black/60 text-white/30 hover:bg-white/5 hover:text-white/80 hover:scale-[1.02]";
+                }
+                btn.className = classes;
+                btn.innerText = level.name;
+
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    state.difficulty = key;
+                    SEQUENCE = generateSequence(); // Generate IMMEDIATELY on select
+                    renderDifficultySelector();
+
+                    // Feedback Sound
+                    const osc = state.audioCtx.createOscillator();
+                    const g = state.audioCtx.createGain();
+                    osc.connect(g);
+                    g.connect(state.audioCtx.destination);
+
+                    osc.frequency.value = 200;
+                    g.gain.value = 0.1;
+                    g.gain.linearRampToValueAtTime(0, state.audioCtx.currentTime + 0.1);
+
+                    osc.start();
+                    osc.stop(state.audioCtx.currentTime + 0.1);
+                };
+
+                pillsDetails.appendChild(btn);
+            });
+            difficultyContainer.appendChild(pillsDetails);
+
+            // Show Stats (BPM) below the stack
+            const current = DIFFICULTY_LEVELS[state.difficulty];
+            const stats = document.createElement('div');
+            stats.className = "text-[10px] uppercase font-mono text-white/30 mt-4 tracking-widest";
+            stats.innerText = `${current.length} ROUNDS • ${current.bpm} BPM`;
+            difficultyContainer.appendChild(stats);
+        }
+
+        async function initGame() {
+            SEQUENCE = generateSequence(); // Fix: Generate initial sequence
+            updateSequenceDisplay(-1);
+            renderDifficultySelector();
+        }
+
+        // Triggered by "Start Groove" button
+        document.getElementById('start-game-btn').addEventListener('click', () => {
+            if (!state.hasCamera) return;
+            startGame();
+        });
+
+
+
+        function startGame() {
+            if (state.isPlaying) return;
+            state.isPlaying = true;
+
+            // STOP INTRO MUSIC
+            if (state.introMusicSource) {
+                try { state.introMusicSource.stop(); } catch (e) { }
+                state.introMusicSource = null;
+            }
+
+            // STOP SCORE MUSIC (if playing from previous round)
+            if (state.scoreMusicSource) {
+                try { state.scoreMusicSource.stop(); } catch (e) { }
+            }
+
+            // 1. GET SETTINGS
+            const level = DIFFICULTY_LEVELS[state.difficulty];
+            const BPM = level.bpm;
+
+            // 2. CREATE NEW ENGINE INSTANCE
+            if (rhythmEngine) rhythmEngine.stop();
+            rhythmEngine = new RhythmEngine(state.audioCtx, BPM, onBeat);
+
+            // 3. USE EXISTING SEQUENCE (Do not regenerate)
+
+            console.log(`STARTING GAME: ${state.difficulty} (${BPM} BPM, ${SEQUENCE.length} Steps)`);
+            console.log("SEQUENCE:", SEQUENCE);
+
+            updateSequenceDisplay(-1); // Refresh display logic for new length
+
+            // UI Update
+            controlsUI.classList.add('opacity-0', 'pointer-events-none');
+            // Hide difficulty selector during game
+            if (difficultyContainer) difficultyContainer.style.opacity = '0';
+
+            // 5. START MUSIC (IMMEDIATELY)
+            state.musicSource = state.audioCtx.createBufferSource();
+            state.musicSource.buffer = state.musicBuffer;
+
+            // Volume Control (50%)
+            const trackGain = state.audioCtx.createGain();
+            trackGain.gain.value = 0.5;
+
+            state.musicSource.connect(trackGain);
+            trackGain.connect(state.musicMasterGain); // Use Master Gain
+            // Play now
+            state.musicSource.start(0);
+
+            // 6. SHOW COUNTDOWN & SEQUENCE
+            sequenceDisplay.classList.remove('opacity-0'); // Show numbers so user can prepare
+            const countdownOverlay = document.getElementById('countdown-overlay');
+            const countdownText = countdownOverlay.querySelector('h1');
+
+            countdownOverlay.classList.remove('hidden');
+            countdownText.innerText = "3"; // Start at 3
+
+            let count = 3;
+
+            // 7. COUNTDOWN LOOP (Updates every 1s)
+            const startTimer = setInterval(() => {
+                count--;
+
+                if (count > 0) {
+                    // Update Text (2... 1...)
+                    countdownText.innerText = count.toString();
+
+                    // Optional: Countdown Beep
+                    const osc = state.audioCtx.createOscillator();
+                    const g = state.audioCtx.createGain();
+                    osc.connect(g);
+                    g.connect(state.audioCtx.destination);
+                    osc.frequency.value = 400 + (count * 100); // Pitch shift
+                    g.gain.value = 0.1;
+                    g.gain.linearRampToValueAtTime(0, state.audioCtx.currentTime + 0.1);
+                    osc.start();
+                    osc.stop(state.audioCtx.currentTime + 0.1);
+
+                } else {
+                    // STOP TIMER - START GAME
+                    clearInterval(startTimer);
+
+                    // Hide Countdown
+                    countdownOverlay.classList.add('hidden');
+
+                    // Show Sequence
+                    sequenceDisplay.classList.remove('opacity-0');
+                    sequenceDisplay.classList.remove('scale-125'); // Reset scale if needed
+
+                    // Start Engine
+                    rhythmEngine.start();
+
+                    // Begin recording phase
+                    beginRecordingPhase();
+                }
+            }, 1000); // 1000ms steps to match 3000ms drop
+        }
+
+        function beginRecordingPhase() {
+            scoreDisplay.innerText = "PLAYING";
+            scoreDisplay.classList.add('text-secondary', 'animate-pulse');
+
+            // RESET for this round
+            state.capturedFrames = [];
+            state.detectedSequence = []; // MediaPipe detections
+
+            // SHOW DEBUG OVERLAY
+            const fingerDebug = document.getElementById('finger-debug');
+            if (fingerDebug) fingerDebug.classList.remove('hidden');
+
+            // Start MediaPipe detection loop
+            if (state.handLandmarker) {
+                requestAnimationFrame(detectHands);
+            }
+
+            // Init Recorder (still used for snapshots display)
+            initRecorder();
+        }
+
+        function initRecorder() {
+            try {
+                mediaRecorder = new MediaRecorder(state.stream, {
+                    mimeType: 'video/webm;codecs=vp8',
+                    bitsPerSecond: 1000000
+                });
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) recordedChunks.push(event.data);
+                };
+                mediaRecorder.onstop = processRecording;
+                mediaRecorder.start();
+            } catch (e) {
+                console.error("MediaRecorder error:", e);
+                mediaRecorder = new MediaRecorder(state.stream);
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) recordedChunks.push(event.data);
+                };
+                mediaRecorder.onstop = processRecording;
+                mediaRecorder.start();
+            }
+        }
+
+        function onBeat(beatInMeasure, totalBeats) {
+            // totalBeats starts at 0.
+            // We want to sync SEQUENCE index to beats.
+
+            // Visual Pulse
+            const ui = document.getElementById('game-ui');
+            ui.classList.add('scale-[1.02]');
+            setTimeout(() => ui.classList.remove('scale-[1.02]'), 100);
+
+            // Progress Bar
+            const totalSeq = SEQUENCE.length;
+            const progress = (totalBeats / (totalSeq + 1)) * 100;
+            beatBar.style.width = `${Math.min(progress, 100)}%`;
+
+            // Sequence Logic
+            const seqIndex = totalBeats; // 1 beat per number
+
+            if (seqIndex < totalSeq) {
+                // Highlight current number
+                updateSequenceDisplay(seqIndex);
+
+                // MULTI-SAMPLE: Take 5 samples during the beat window for higher accuracy
+                const sampleTimes = [100, 200, 300, 400, 500]; // ms after beat
+                const beatSamples = [];
+
+                sampleTimes.forEach((delay, sampleIdx) => {
+                    setTimeout(() => {
+                        if (state.isPlaying) {
+                            beatSamples.push(state.lastDetectedFingers);
+                            console.log(`Beat ${seqIndex + 1}, Sample ${sampleIdx + 1}: ${state.lastDetectedFingers}`);
+
+                            // On last sample, calculate mode and store result
+                            if (sampleIdx === sampleTimes.length - 1) {
+                                const mode = getMode(beatSamples);
+                                state.detectedSequence.push(mode);
+                                console.log(`Beat ${seqIndex + 1} FINAL: Mode=${mode} (from samples: ${beatSamples.join(',')}), Target=${SEQUENCE[seqIndex]}`);
+                            }
+
+                            // Capture visual snapshot at the middle sample (300ms)
+                            if (delay === 300) {
+                                captureFrame();
+                            }
+                        }
+                    }, delay);
+                });
+
+            } else if (seqIndex === totalSeq) {
+                // End of sequence
+                stopGame();
+            }
+        }
+
+        function stopGame() {
+            state.isPlaying = false;
+            rhythmEngine.stop();
+
+            // Stop Game Music
+            if (state.musicSource) {
+                try { state.musicSource.stop(); } catch (e) { }
+            }
+
+            // START SCORE MUSIC
+            if (state.scoreMusicBuffer) {
+                state.scoreMusicSource = state.audioCtx.createBufferSource();
+                state.scoreMusicSource.buffer = state.scoreMusicBuffer;
+                state.scoreMusicSource.loop = true;
+
+                // Volume Control (Matches Menu Music -> 0.2)
+                const gainNode = state.audioCtx.createGain();
+                gainNode.gain.value = 0.2;
+
+                state.scoreMusicSource.connect(gainNode);
+                gainNode.connect(state.musicMasterGain); // Connect to Master
+                // gainNode.connect(state.audioCtx.destination); // OLD
+
+                state.scoreMusicSource.start(0);
+            }
+
+            // Show Mute Button
+            const muteBtn = document.getElementById('mute-btn');
+            if (muteBtn) muteBtn.classList.remove('opacity-0', 'pointer-events-none');
+
+            scoreDisplay.innerText = "FINISHING...";
+            scoreDisplay.classList.remove('text-secondary', 'animate-pulse');
+            updateSequenceDisplay(-1);
+
+
+
+            // STOP RECORDER (Trigger Video Analysis)
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+        }
+
+        // Pre-written roast feedback pool
+        const FEEDBACK_POOL = [
+            "Not bad, but my grandma could do better.",
+            "Almost perfect! Almost.",
+            "You call THAT rhythm?",
+            "Okay, I see you! Smooth moves.",
+            "Did you even try?",
+            "Flawless victory! ...just kidding.",
+            "Your hands said yes, your brain said no.",
+            "Finger gymnastics champion!",
+            "That was... something.",
+            "10/10 for effort, 3/10 for execution."
+        ];
+
+        async function processRecording() {
+            // VIDEO-FIRST APPROACH:
+            // 1. Hide unwanted UI
+            // 2. Show "Analyzing" Robot
+            // 3. Create video blob from recorded chunks
+            // 4. Send video to Gemini for analysis
+
+            // Hide finger debug overlay
+            const fingerDebug = document.getElementById('finger-debug');
+            if (fingerDebug) fingerDebug.classList.add('hidden');
+
+            const feedbackOverlay = document.getElementById('feedback-overlay');
+            const feedbackTitle = document.getElementById('feedback-title');
+            const feedbackText = document.getElementById('feedback-text');
+            const scoreDisplay = document.querySelector('#game-ui h2');
+
+            // 1. SHOW ANALYZING STATE
+            feedbackOverlay.classList.remove('hidden');
+            setTimeout(() => feedbackOverlay.classList.remove('opacity-0'), 10);
+
+            setRobotState('analyzing'); // Show Blue Robot
+            feedbackTitle.innerText = "ANALYZING...";
+            feedbackTitle.className = "text-6xl font-black uppercase text-glow animate-pulse";
+            feedbackText.innerHTML = `<p class="text-xl text-white/70 animate-pulse">The AI Judge is watching your full performance video...</p>`;
+
+            scoreDisplay.innerText = "JUDGING...";
+
+            // 2. Create video blob from recorded chunks
+            if (recordedChunks.length === 0) {
+                console.error("No video chunks recorded!");
+                feedbackTitle.innerText = "ERROR";
+                feedbackText.innerHTML = `<p class="text-red-400">No video recorded. Camera issue?</p>`;
+                setRobotState('sad');
+                return;
+            }
+
+            const videoBlob = new Blob(recordedChunks, { type: 'video/webm' });
+            console.log(`Video blob created: ${(videoBlob.size / 1024 / 1024).toFixed(2)} MB`);
+
+            // 3. Call Gemini with the VIDEO (This will now handle EVERYTHING including the result screen)
+            await sendToGeminiVideo(videoBlob);
+        }
+
+        async function processSnapshots() {
+            // Legacy wrapper
+            processRecording();
+        }
+
+
+        // --- AI Integration (Snapshot Version) ---
+        async function sendToGeminiSnapshots() {
+            const feedbackOverlay = document.getElementById('feedback-overlay');
+            const feedbackTitle = document.getElementById('feedback-title');
+            const feedbackText = document.getElementById('feedback-text');
+            const scoreDisplay = document.querySelector('#game-ui h2');
+
+            try {
+                // 1. Construct Payload with All Images
+                const imageParts = state.capturedFrames.map(dataUrl => {
+                    const rawBase64 = dataUrl.split(',')[1];
+                    return { inline_data: { mime_type: 'image/jpeg', data: rawBase64 } };
+                });
+
+                // DYNAMIC PROMPT CONSTRUCTION
+                let imageBreakdown = "";
+                SEQUENCE.forEach((target, idx) => {
+                    imageBreakdown += `- Image ${idx + 1} is Beat ${idx + 1} (Target: ${target})\n`;
+                });
+
+                const promptText = `Analyze these ${SEQUENCE.length} images from a rhythm game.
+                Target Sequence: [${SEQUENCE.join(', ')}].
+
+                ${imageBreakdown}
+
+                YOUR TASK:
+                1. For each image, count the extended fingers on the hand.
+                2. Be STRICT. If the hand is a fist, count is 0. If 1 finger up, count is 1.
+                3. Compare the detected count to the Target.
+
+                Strict JSON response: {
+                    "success": boolean (true if > 50% match),
+                    "correct_count": number (0 to ${SEQUENCE.length}),
+                    "score": number (0-100),
+                    "feedback": "string (MAX 15 WORDS, roasting/funny)",
+                    "detailed_results": [array of booleans, length ${SEQUENCE.length}] (true for hit, false for miss),
+                    "detected_counts": [array of numbers, length ${SEQUENCE.length}] (The specific number of fingers you saw in each image)
+                }.`;
+
+
+                const payload = {
+                    contents: [{
+                        parts: [
+                            { text: promptText },
+                            ...imageParts
+                        ]
+                    }]
+                };
+
+                // 2. Fetch Gemini API
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${state.apiKey}`;
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorBody = await response.text();
+                    throw new Error(`API Error ${response.status}: ${errorBody}`);
+                }
+
+                const result = await response.json();
+
+                // 4. Parse Response
+                if (!result.candidates || !result.candidates[0] || !result.candidates[0].content) {
+                    throw new Error("No candidates returned from Gemini. blocked?");
+                }
+
+                const textResponse = result.candidates[0].content.parts[0].text;
+                const jsonString = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+
+                let aiData;
+                try {
+                    aiData = JSON.parse(jsonString);
+                } catch (e) {
+                    throw new Error(`Invalid JSON: ${jsonString}`);
+                }
+
+                // --- 5. RENDER RESULTS (Using AI Data) ---
+
+                // Calculate percentage based on AI correctness
+                const percentage = aiData.correct_count / SEQUENCE.length;
+                const success = aiData.success;
+
+                // ROBOT EMOTION LOGIC
+                if (percentage > 0.8) {
+                    setRobotState('happy');
+                } else if (percentage > 0.5) {
+                    setRobotState('average');
+                } else {
+                    setRobotState('sad');
+                }
+
+                // Title (Score) Pop
+                feedbackTitle.innerText = `${aiData.correct_count} / ${SEQUENCE.length}`;
+                feedbackTitle.className = success ?
+                    "text-9xl font-black text-glow text-primary opacity-0" :
+                    "text-9xl font-black text-glow-pink text-secondary opacity-0";
+
+                setTimeout(() => feedbackTitle.classList.add('animate-pop'), 100);
+
+                // Grid construction
+                let gridHTML = '<div class="flex gap-2 mb-6 justify-center flex-wrap">';
+                const results = aiData.detailed_results || SEQUENCE.map(() => false);
+
+                results.forEach((isHit, idx) => {
+                    const colorClass = isHit ? 'border-primary bg-primary/20 shadow-[0_0_15px_#00f3ff]' : 'border-secondary bg-secondary/10';
+                    const textClass = isHit ? 'text-primary' : 'text-secondary';
+                    const label = isHit ? 'HIT' : 'MISS';
+                    const targetNum = SEQUENCE[idx];
+
+                    gridHTML += `
+                        <div class="reveal-grid-item opacity-0 w-16 h-24 border-2 ${colorClass} rounded-xl flex flex-col items-center justify-center backdrop-blur-sm transform transition-all hover:scale-110">
+                            <span class="text-4xl font-black ${textClass} mb-1">${targetNum}</span>
+                            <span class="text-xs uppercase font-black tracking-wider ${textClass}">${label}</span>
+                        </div>
+                    `;
+                });
+                gridHTML += '</div>';
+
+                // Snapshots with detected counts
+                let snapshotHTML = `<div class="flex gap-2 justify-center flex-wrap mt-4">`;
+                state.capturedFrames.forEach((frame, idx) => {
+                    const isHit = results[idx];
+                    const borderColor = isHit ? 'border-primary shadow-[0_0_10px_#00f3ff]' : 'border-secondary/50';
+                    const badgeColor = isHit ? 'bg-primary' : 'bg-secondary';
+                    const detected = (aiData.detected_counts && aiData.detected_counts[idx] !== undefined) ? aiData.detected_counts[idx] : '?';
+
+                    snapshotHTML += `
+                        <div class="reveal-snapshot-item opacity-0 relative w-20 h-28 rounded-lg overflow-hidden border-2 ${borderColor} bg-black/50 hover:scale-150 hover:z-50 transition-transform origin-bottom duration-300 group">
+                            <img src="${frame}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100">
+                            <div class="absolute top-1 right-1 bg-black/40 backdrop-blur-sm rounded text-[8px] text-white/50 px-1.5 py-0.5 font-mono border border-white/10">#${idx + 1}</div>
+                            <div class="absolute bottom-0 w-full ${badgeColor} py-1 flex justify-center shadow-[0_-2px_10px_rgba(0,0,0,0.3)]">
+                                <span class="text-[10px] font-bold text-white uppercase tracking-wider">SAW: ${detected}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                snapshotHTML += `</div>`;
+
+                feedbackText.innerHTML = `
+                    <div class="glass-panel p-6 rounded-3xl bg-white/5 backdrop-blur-md border border-white/10 max-w-4xl mx-auto">
+                        <div class="reveal-text text-left text-xs uppercase font-bold text-white/50 mb-4 tracking-widest opacity-0">VERDICT</div>
+                        ${gridHTML}
+                        <div class="reveal-text text-xl italic mb-4 opacity-0">"${aiData.feedback}"</div>
+                        ${snapshotHTML}
+                    </div>
+                `;
+
+                // PLAYFUL ANIMATION TRIGGER
+                document.querySelectorAll('.reveal-grid-item').forEach((item, idx) => {
+                    setTimeout(() => item.classList.add('animate-pop'), 400 + (idx * 100));
+                });
+                document.querySelectorAll('.reveal-text').forEach((item, idx) => {
+                    setTimeout(() => item.classList.add('animate-pop'), 1000 + (idx * 200));
+                });
+                document.querySelectorAll('.reveal-snapshot-item').forEach((item, idx) => {
+                    setTimeout(() => item.classList.add('animate-pop'), 1400 + (idx * 100));
+                });
+
+                scoreDisplay.innerText = aiData.correct_count.toString();
+                scoreDisplay.classList.add(success ? 'text-primary' : 'text-secondary');
+
+            } catch (err) {
+                console.error("Gemini Error:", err);
+                feedbackTitle.innerText = "ERROR";
+                feedbackTitle.className = "text-6xl font-black uppercase text-red-500";
+                feedbackText.innerHTML = `<span class="text-red-400 font-mono text-sm break-all">${err.message}</span>`;
+                setRobotState('sad');
+            }
+        }
+
+        // --- AI Integration (VIDEO Version) ---
+        async function sendToGeminiVideo(videoBlob) {
+            const feedbackOverlay = document.getElementById('feedback-overlay');
+            const feedbackTitle = document.getElementById('feedback-title');
+            const feedbackText = document.getElementById('feedback-text');
+            const scoreDisplay = document.querySelector('#game-ui h2');
+
+            try {
+                // 1. Convert Video Blob to Base64
+                const base64Data = await blobToBase64(videoBlob);
+                const dataUrlValues = base64Data.split(',');
+                const mimeType = dataUrlValues[0].split(':')[1].split(';')[0];
+                const rawBase64 = dataUrlValues[1];
+
+                console.log(`Sending video to Gemini: ${mimeType}, ${(rawBase64.length / 1024 / 1024).toFixed(2)} MB base64`);
+
+                // 2. Construct Prompt
+                const promptText = `Analyze this rhythm game video.
+                Target Sequence: [${SEQUENCE.join(', ')}].
+                
+                The player performs exactly ${SEQUENCE.length} distinct hand gestures in a row, synced to beats.
+                
+                YOUR TASK:
+                1. Watch the video chronologically.
+                2. Identify the ${SEQUENCE.length} moments where the player holds up fingers (one per beat).
+                3. For EACH moment, count the extended fingers (fist = 0, one finger = 1, etc.).
+                4. Compare each detected count to the corresponding target in the sequence.
+                5. Focus on the HELD position, not transitions or motion blur.
+
+                Strict JSON response: {
+                    "success": boolean (true if > 50% match),
+                    "correct_count": number (0 to ${SEQUENCE.length}),
+                    "score": number (0-100),
+                    "feedback": "string (MAX 15 WORDS, roasting/funny)",
+                    "detailed_results": [array of booleans, length ${SEQUENCE.length}] (true for hit, false for miss),
+                    "detected_counts": [array of numbers, length ${SEQUENCE.length}] (The finger counts you detected in order)
+                }.`;
+
+                const payload = {
+                    contents: [{
+                        parts: [
+                            { text: promptText },
+                            { inline_data: { mime_type: mimeType, data: rawBase64 } }
+                        ]
+                    }]
+                };
+
+                // 3. Fetch Gemini API
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${state.apiKey}`;
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorBody = await response.text();
+                    throw new Error(`API Error ${response.status}: ${errorBody}`);
+                }
+
+                const result = await response.json();
+
+                // 4. Parse Response
+                if (!result.candidates || !result.candidates[0] || !result.candidates[0].content) {
+                    throw new Error("No candidates returned from Gemini. blocked?");
+                }
+
+                const textResponse = result.candidates[0].content.parts[0].text;
+                const jsonString = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+
+                let aiData;
+                try {
+                    aiData = JSON.parse(jsonString);
+                } catch (e) {
+                    throw new Error(`Invalid JSON: ${jsonString}`);
+                }
+
+                console.log("Gemini Video Analysis Result:", aiData);
+
+                // --- 5. RENDER RESULTS (Using AI Data) ---
+
+                // Calculate percentage based on AI correctness
+                const percentage = aiData.correct_count / SEQUENCE.length;
+                const success = aiData.success;
+
+                // ROBOT EMOTION LOGIC
+                if (percentage > 0.8) {
+                    setRobotState('happy');
+                } else if (percentage > 0.5) {
+                    setRobotState('average');
+                } else {
+                    setRobotState('sad');
+                }
+
+                // Title (Score) Pop
+                feedbackTitle.innerText = `${aiData.correct_count} / ${SEQUENCE.length}`;
+                feedbackTitle.className = success ?
+                    "text-9xl font-black text-glow text-primary opacity-0" :
+                    "text-9xl font-black text-glow-pink text-secondary opacity-0";
+
+                setTimeout(() => feedbackTitle.classList.add('animate-pop'), 100);
+
+                // Grid construction
+                let gridHTML = '<div class="flex gap-2 mb-6 justify-center flex-wrap">';
+                const results = aiData.detailed_results || SEQUENCE.map(() => false);
+
+                results.forEach((isHit, idx) => {
+                    const colorClass = isHit ? 'border-primary bg-primary/20 shadow-[0_0_15px_#00f3ff]' : 'border-secondary bg-secondary/10';
+                    const textClass = isHit ? 'text-primary' : 'text-secondary';
+                    const label = isHit ? 'HIT' : 'MISS';
+                    const targetNum = SEQUENCE[idx];
+
+                    gridHTML += `
+                        <div class="reveal-grid-item opacity-0 w-16 h-24 border-2 ${colorClass} rounded-xl flex flex-col items-center justify-center backdrop-blur-sm transform transition-all hover:scale-110">
+                            <span class="text-4xl font-black ${textClass} mb-1">${targetNum}</span>
+                            <span class="text-xs uppercase font-black tracking-wider ${textClass}">${label}</span>
+                        </div>
+                    `;
+                });
+                gridHTML += '</div>';
+
+                // Snapshots with detected counts (still showing captured frames for visual reference)
+                let snapshotHTML = `<div class="flex gap-2 justify-center flex-wrap mt-4">`;
+                state.capturedFrames.forEach((frame, idx) => {
+                    const isHit = results[idx];
+                    const borderColor = isHit ? 'border-primary shadow-[0_0_10px_#00f3ff]' : 'border-secondary/50';
+                    const badgeColor = isHit ? 'bg-primary' : 'bg-secondary';
+                    const detected = (aiData.detected_counts && aiData.detected_counts[idx] !== undefined) ? aiData.detected_counts[idx] : '?';
+
+                    snapshotHTML += `
+                        <div class="reveal-snapshot-item opacity-0 relative w-20 h-28 rounded-lg overflow-hidden border-2 ${borderColor} bg-black/50 hover:scale-150 hover:z-50 transition-transform origin-bottom duration-300 group">
+                            <img src="${frame}" class="w-full h-full object-cover opacity-80 group-hover:opacity-100">
+                            <div class="absolute top-1 right-1 bg-black/40 backdrop-blur-sm rounded text-[8px] text-white/50 px-1.5 py-0.5 font-mono border border-white/10">#${idx + 1}</div>
+                            <div class="absolute bottom-0 w-full ${badgeColor} py-1 flex justify-center shadow-[0_-2px_10px_rgba(0,0,0,0.3)]">
+                                <span class="text-[10px] font-bold text-white uppercase tracking-wider">SAW: ${detected}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                snapshotHTML += `</div>`;
+
+                feedbackText.innerHTML = `
+                    <div class="glass-panel p-6 rounded-3xl bg-white/5 backdrop-blur-md border border-white/10 max-w-4xl mx-auto">
+                        <div class="reveal-text text-left text-xs uppercase font-bold text-white/50 mb-4 tracking-widest opacity-0">VIDEO VERDICT</div>
+                        ${gridHTML}
+                        <div class="reveal-text text-xl italic mb-4 opacity-0">"${aiData.feedback}"</div>
+                        ${snapshotHTML}
+                    </div>
+                `;
+
+                // PLAYFUL ANIMATION TRIGGER
+                document.querySelectorAll('.reveal-grid-item').forEach((item, idx) => {
+                    setTimeout(() => item.classList.add('animate-pop'), 400 + (idx * 100));
+                });
+                document.querySelectorAll('.reveal-text').forEach((item, idx) => {
+                    setTimeout(() => item.classList.add('animate-pop'), 1000 + (idx * 200));
+                });
+                document.querySelectorAll('.reveal-snapshot-item').forEach((item, idx) => {
+                    setTimeout(() => item.classList.add('animate-pop'), 1400 + (idx * 100));
+                });
+
+                scoreDisplay.innerText = aiData.correct_count.toString();
+                scoreDisplay.classList.add(success ? 'text-primary' : 'text-secondary');
+
+            } catch (err) {
+                console.error("Gemini Video Error:", err);
+                feedbackTitle.innerText = "ERROR";
+                feedbackTitle.className = "text-6xl font-black uppercase text-red-500";
+                feedbackText.innerHTML = `<span class="text-red-400 font-mono text-sm break-all">${err.message}</span>`;
+                setRobotState('sad');
+            }
+        }
+
+        function blobToBase64(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        }
+
+        // --- ROBOT CONTROL ---
+        function setRobotState(state) {
+            // Hide all robots
+            document.querySelectorAll('.robot-wrapper').forEach(el => el.classList.remove('active'));
+
+            // Show specific state
+            if (state === 'sad') {
+                document.getElementById('robot-sad').classList.add('active');
+            } else if (state === 'happy') {
+                document.getElementById('robot-happy').classList.add('active');
+            } else if (state === 'analyzing') {
+                document.getElementById('robot-analyzing').classList.add('active');
+            } else {
+                document.getElementById('robot-average').classList.add('active');
+            }
+        }
+
+        async function initGame() {
+            SEQUENCE = generateSequence(); // Fix: Generate initial sequence
+            updateSequenceDisplay(-1);
+            // Hide Sequence on Load (Show only after Drop)
+            document.getElementById('sequence-display').classList.add('opacity-0');
+            renderDifficultySelector();
+        }
+
+        // ...
+
+        function resetGame() {
+            document.getElementById('feedback-overlay').classList.add('hidden');
+            document.getElementById('game-ui').classList.add('opacity-0'); // Hide score/cam status
+
+            // Show Start Screen UI
+            controlsUI.classList.remove('opacity-0', 'pointer-events-none');
+            // FIX: Do NOT show setupPanel (Accessing Camera screen)
+            // setupPanel.style.opacity = '1'; 
+
+            // Hide Sequence on Menu (Show only after Drop)
+            document.getElementById('sequence-display').classList.add('opacity-0');
+
+            // UNHIDE DIFFICULTY SELECTOR
+            const diffSelect = document.getElementById('difficulty-selector');
+            if (diffSelect) diffSelect.style.opacity = '1';
+
+            // Reset Bars
+            beatBar.style.width = '0%';
+
+            // Generate NEW sequence on reset
+            SEQUENCE = generateSequence();
+            updateSequenceDisplay(-1);
+
+            // Reset Score
+            const scoreDisplay = document.querySelector('#game-ui h2');
+            scoreDisplay.innerText = "000";
+            scoreDisplay.className = "text-5xl font-black italic text-stroke";
+        }
+
+        // NEW: Restart directly (skips menu)
+        function restartGame() {
+            // 1. Hide Overlays
+            document.getElementById('feedback-overlay').classList.add('hidden');
+            document.getElementById('feedback-overlay').classList.add('opacity-0');
+
+            // 2. Reset Score & Visuals
+            const scoreDisplay = document.querySelector('#game-ui h2');
+            scoreDisplay.innerText = "000";
+            scoreDisplay.className = "text-5xl font-black italic text-stroke";
+
+            // 3. Generate New Sequence
+            SEQUENCE = generateSequence();
+            // Don't need updateSequenceDisplay here because startGame calls it
+
+            // 4. Start Game Immediately
+            startGame();
+        }
+        state.isPlaying = false;
+
+
+        // BACK TO MENU LISTENER
+        document.getElementById('back-to-menu-btn').addEventListener('click', () => {
+            resetGame();
+        });
+
+        // TRY AGAIN LISTENER (Direct Restart)
+        document.getElementById('try-again-btn').addEventListener('click', () => {
+            restartGame();
+        });
+
+    </script>
+</body>
+
+</html>

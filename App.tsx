@@ -468,24 +468,27 @@ const App: React.FC = () => {
                             <p className="text-[#00f3ff] tracking-[0.3em] font-bold text-sm mt-2">GESTURE BATTLE</p>
                         </div>
 
-                        {/* Difficulty Selector */}
-                        <div className="flex flex-col gap-3 w-full max-w-xs">
+                        {/* Difficulty Selector - Improved Styling */}
+                        <div className="flex flex-col gap-4 w-full max-w-sm items-center">
+                            <div className="text-xs font-bold text-white/40 tracking-[0.2em] uppercase mb-3 text-center">
+                                CHOOSE YOUR DIFFICULTY
+                            </div>
                             {(Object.keys(DIFFICULTIES) as Difficulty[]).map((d) => (
                                 <button
                                     key={d}
                                     onClick={() => setDifficulty(d)}
                                     className={`
-                                        py-4 rounded-xl text-sm font-black tracking-[0.2em] transition-all duration-300 border
+                                        w-full py-4 rounded-full text-sm font-black tracking-[0.2em] uppercase transition-all duration-300 border
                                         ${difficulty === d 
-                                            ? `bg-white/10 ${DIFFICULTIES[d].color} border-white/50 scale-105 shadow-[0_0_20px_rgba(255,255,255,0.1)]` 
-                                            : 'bg-black/40 border-white/10 text-white/30 hover:bg-white/5 hover:text-white'
+                                            ? `bg-white/10 ${DIFFICULTIES[d].color} border-white/50 scale-105 shadow-[0_0_20px_rgba(255,255,255,0.15)]` 
+                                            : 'bg-black/60 border-white/20 text-white/30 hover:bg-white/5 hover:text-white/80 hover:scale-[1.02]'
                                         }
                                     `}
                                 >
                                     {DIFFICULTIES[d].name}
                                 </button>
                             ))}
-                            <p className="text-center text-[10px] text-white/30 font-mono mt-2">
+                            <p className="text-[10px] uppercase font-mono text-white/30 mt-4 tracking-widest">
                                 {DIFFICULTIES[difficulty].length} ROUNDS • {DIFFICULTIES[difficulty].bpm} BPM
                             </p>
                         </div>
@@ -514,46 +517,50 @@ const App: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Center Stage - Updated for Glass UI & Countdown visibility */}
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-full z-40">
+                        {/* Center Stage - Countdown Above, Glass Bar Below */}
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-full z-40 pointer-events-none">
                             
-                            {/* Countdown - Now larger and above everything */}
+                            {/* Countdown - Massive and centered */}
                             {countdown !== null && (
-                                <div className="text-[12rem] leading-none font-black italic text-transparent bg-clip-text bg-gradient-to-b from-[#8b5cf6] to-[#00f3ff] drop-shadow-[0_0_30px_rgba(139,92,246,0.6)] animate-ping mb-8 z-50">
+                                <div className="text-[16rem] leading-none font-black italic text-transparent bg-clip-text bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] drop-shadow-[0_5px_5px_rgba(0,0,0,1)] animate-pulse mb-12 -translate-y-32 z-50">
                                     {countdown}
                                 </div>
                             )}
 
-                            {/* Active Sequence - Always visible during PLAYING */}
+                            {/* Active Sequence - Visible during PLAYING (including countdown) */}
                             {status === GameStatus.PLAYING && (
                                 <div className="flex flex-col items-center animate-pop">
                                     
-                                    {/* Glass Bar UI */}
-                                    <div className="glass-panel px-10 py-6 rounded-3xl flex flex-wrap justify-center items-center gap-4 md:gap-8 max-w-[95vw] shadow-[0_0_30px_rgba(0,0,0,0.5)] bg-black/30">
+                                    {/* Glass Bar UI - Improved border and shadow */}
+                                    <div className="glass-panel px-6 py-3 rounded-2xl flex flex-wrap justify-center items-center gap-2 max-w-[95vw] shadow-[0_0_30px_rgba(0,0,0,0.3)] border border-white/10">
                                         {sequence.map((num, idx) => {
                                             const isPast = idx < currentBeat;
                                             const isCurrent = idx === currentBeat;
                                             const result = localResults[idx];
                                             
-                                            let textClass = 'text-white/20 font-bold text-4xl transition-all duration-200';
-                                            let containerClass = 'transform transition-all duration-200';
+                                            // During countdown, show all numbers dimmed
+                                            let textClass = 'text-white/30 font-black text-4xl transition-all duration-200';
+                                            let containerClass = 'w-12 h-16 flex justify-center items-center transform transition-all duration-200';
 
-                                            if (result === true) {
-                                                textClass = 'text-green-400 text-glow font-black text-6xl';
-                                                containerClass += ' scale-100';
-                                            } else if (result === false) {
-                                                textClass = 'text-red-500 font-black text-5xl opacity-50';
-                                                containerClass += ' scale-90';
-                                            } else if (isCurrent) {
-                                                textClass = 'text-white text-glow font-black text-8xl drop-shadow-[0_0_15px_rgba(255,255,255,0.8)]';
-                                                containerClass += ' scale-125 -translate-y-4 mx-2';
-                                            } else if (!isPast) {
-                                                // Future notes
-                                                textClass = 'text-white/40 font-bold text-4xl';
+                                            if (countdown === null) {
+                                                // Game started - show dynamic states
+                                                if (result === true) {
+                                                    textClass = 'text-[#00f3ff] text-glow font-black text-4xl';
+                                                    containerClass += ' scale-100';
+                                                } else if (result === false) {
+                                                    textClass = 'text-[#ff00ff] text-glow-pink font-black text-4xl opacity-50';
+                                                    containerClass += ' scale-90';
+                                                } else if (isCurrent) {
+                                                    textClass = 'text-white text-glow font-black text-6xl drop-shadow-[0_0_15px_rgba(255,255,255,0.8)]';
+                                                    containerClass += ' scale-110 -translate-y-1.5 z-10';
+                                                }
+                                            } else {
+                                                // During countdown - show all numbers in white/40 with subtle pulse
+                                                textClass = 'text-white/40 font-black text-4xl animate-pulse';
                                             }
 
                                             return (
-                                                <div key={idx} className={`flex justify-center items-center ${containerClass}`}>
+                                                <div key={idx} className={containerClass}>
                                                     <span className={textClass}>
                                                         {num}
                                                     </span>
@@ -562,14 +569,15 @@ const App: React.FC = () => {
                                         })}
                                     </div>
                                     
-                                    {/* BPM Indicator */}
-                                    <div className="mt-6 flex items-center gap-4">
-                                         <div className="h-px w-12 bg-gradient-to-r from-transparent via-[#00f3ff] to-transparent opacity-50"></div>
-                                         <span className="text-[#00f3ff] font-mono text-xs tracking-[0.3em] opacity-80 shadow-[#00f3ff] uppercase">
-                                            {DIFFICULTIES[difficulty].bpm} BPM
-                                         </span>
-                                         <div className="h-px w-12 bg-gradient-to-r from-transparent via-[#00f3ff] to-transparent opacity-50"></div>
+                                    {/* BPM Indicator - Centered below glass bar */}
+                                    <div className="mt-4 flex items-center justify-center gap-4">
+                                         <div className="h-px w-24 bg-gray-800 rounded-full overflow-hidden mx-auto">
+                                            <div className="h-full bg-[#00f3ff] w-0"></div>
+                                         </div>
                                     </div>
+                                    <p className="text-[10px] font-mono text-[#00f3ff]/80 tracking-widest mt-1">
+                                        {DIFFICULTIES[difficulty].bpm} BPM
+                                    </p>
 
                                 </div>
                             )}
@@ -589,37 +597,66 @@ const App: React.FC = () => {
 
                 {/* --- RESULT STATE --- */}
                 {status === GameStatus.RESULT && resultData && (
-                    <div className="flex flex-col items-center gap-6 w-full max-w-4xl animate-pop">
+                    <div className="flex flex-col items-center gap-6 w-full max-w-4xl animate-pop px-4">
                         <Robot state={robotState} />
                         
-                        <div className="text-center">
-                            <h2 className={`text-8xl font-black ${resultData.success ? 'text-[#00f3ff] text-glow' : 'text-[#ff00ff] text-glow-pink'}`}>
-                                {resultData.correct_count} / {sequence.length}
-                            </h2>
-                            <p className="text-2xl italic font-bold mt-2">"{resultData.feedback}"</p>
-                        </div>
+                        <h1 className={`text-9xl font-black ${resultData.success ? 'text-[#00f3ff] text-glow' : 'text-[#ff00ff] text-glow-pink'} animate-pop`}>
+                            {resultData.correct_count} / {sequence.length}
+                        </h1>
 
-                        {/* Detailed Grid */}
-                        <div className="glass-panel p-6 rounded-3xl w-full">
-                            <div className="flex flex-wrap justify-center gap-4">
+                        {/* Detailed Results Panel */}
+                        <div className="glass-panel p-6 rounded-3xl bg-white/5 backdrop-blur-md border border-white/10 w-full">
+                            <div className="text-left text-xs uppercase font-bold text-white/50 mb-4 tracking-widest">
+                                VERDICT
+                            </div>
+                            
+                            {/* Grid of Results */}
+                            <div className="flex gap-2 mb-6 justify-center flex-wrap">
                                 {sequence.map((target, idx) => {
                                     const isHit = resultData.detailed_results[idx];
                                     const detected = resultData.detected_counts[idx];
+                                    const colorClass = isHit 
+                                        ? 'border-[#00f3ff] bg-[#00f3ff]/20 shadow-[0_0_15px_#00f3ff]' 
+                                        : 'border-[#ff00ff] bg-[#ff00ff]/10';
+                                    const textClass = isHit ? 'text-[#00f3ff]' : 'text-[#ff00ff]';
+                                    const label = isHit ? 'HIT' : 'MISS';
+                                    
                                     return (
-                                        <div key={idx} className="flex flex-col items-center gap-2">
-                                            <div 
-                                                className={`
-                                                    w-16 h-20 rounded-xl flex items-center justify-center border-2
-                                                    ${isHit ? 'bg-[#00f3ff]/20 border-[#00f3ff]' : 'bg-[#ff00ff]/10 border-[#ff00ff]'}
-                                                `}
-                                            >
-                                                <span className={`text-3xl font-black ${isHit ? 'text-[#00f3ff]' : 'text-[#ff00ff]'}`}>
-                                                    {target}
-                                                </span>
+                                        <div key={idx} className={`w-16 h-24 border-2 ${colorClass} rounded-xl flex flex-col items-center justify-center backdrop-blur-sm transform transition-all hover:scale-110`}>
+                                            <span className={`text-4xl font-black ${textClass} mb-1`}>
+                                                {target}
+                                            </span>
+                                            <span className={`text-xs uppercase font-black tracking-wider ${textClass}`}>
+                                                {label}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* AI Feedback Quote */}
+                            <div className="text-xl italic mb-4 text-center">
+                                "{resultData.feedback}"
+                            </div>
+
+                            {/* Captured Frames Grid */}
+                            <div className="flex gap-2 justify-center flex-wrap mt-4">
+                                {capturedFrames.map((frame, idx) => {
+                                    const isHit = resultData.detailed_results[idx];
+                                    const borderColor = isHit ? 'border-[#00f3ff] shadow-[0_0_10px_#00f3ff]' : 'border-[#ff00ff]/50';
+                                    const badgeColor = isHit ? 'bg-[#00f3ff]' : 'bg-[#ff00ff]';
+                                    const detected = resultData.detected_counts[idx] ?? '?';
+                                    
+                                    return (
+                                        <div key={idx} className={`relative w-20 h-28 rounded-lg overflow-hidden border-2 ${borderColor} bg-black/50 hover:scale-150 hover:z-50 transition-transform origin-bottom duration-300 group`}>
+                                            <img src={frame} alt={`frame ${idx + 1}`} className="w-full h-full object-cover opacity-80 group-hover:opacity-100" />
+                                            <div className="absolute top-1 right-1 bg-black/40 backdrop-blur-sm rounded text-[8px] text-white/50 px-1.5 py-0.5 font-mono border border-white/10">
+                                                #{idx + 1}
                                             </div>
-                                            <span className="text-[10px] text-white/50 font-mono">SAW: {detected}</span>
-                                            <div className="w-16 h-12 rounded-lg overflow-hidden opacity-50 border border-white/10">
-                                                <img src={capturedFrames[idx]} alt="frame" className="w-full h-full object-cover" />
+                                            <div className={`absolute bottom-0 w-full ${badgeColor} py-1 flex justify-center shadow-[0_-2px_10px_rgba(0,0,0,0.3)]`}>
+                                                <span className="text-[10px] font-bold text-white uppercase tracking-wider">
+                                                    SAW: {detected}
+                                                </span>
                                             </div>
                                         </div>
                                     );
@@ -627,18 +664,19 @@ const App: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="flex gap-4">
-                            <button 
-                                onClick={() => setStatus(GameStatus.MENU)}
-                                className="px-8 py-3 rounded-full border border-white/30 hover:bg-white/10 text-sm font-bold tracking-widest transition-colors flex items-center gap-2"
-                            >
-                                <Volume2 size={16} /> MENU
-                            </button>
+                        {/* Action Buttons */}
+                        <div className="flex gap-8 mt-4">
                             <button 
                                 onClick={startGame}
-                                className="px-8 py-3 rounded-full bg-white text-black text-sm font-bold tracking-widest hover:scale-105 transition-transform flex items-center gap-2"
+                                className="text-white/40 text-xs font-bold uppercase tracking-[0.2em] hover:text-white transition-colors border-b border-white/0 hover:border-white/50 pb-1"
                             >
-                                <RotateCcw size={16} /> REPLAY
+                                Try Again
+                            </button>
+                            <button 
+                                onClick={() => setStatus(GameStatus.MENU)}
+                                className="text-white/40 text-xs font-bold uppercase tracking-[0.2em] hover:text-white transition-colors border-b border-white/0 hover:border-white/50 pb-1"
+                            >
+                                Back to Menu
                             </button>
                         </div>
                     </div>
