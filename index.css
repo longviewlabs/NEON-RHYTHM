@@ -7,17 +7,39 @@ body {
   background-color: #050510;
   overflow: hidden;
   color: white;
+  /* Mobile-first optimizations */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Prevent text selection on mobile for better UX */
+  -webkit-tap-highlight-color: transparent;
+  /* Improve touch scrolling */
+  -webkit-overflow-scrolling: touch;
 }
 
 @layer utilities {
     .text-glow {
-        text-shadow: 0 0 10px #00f3ff, 0 0 20px #00f3ff;
+        text-shadow: 0 0 8px #00f3ff, 0 0 15px #00f3ff;
+    }
+    @media (min-width: 768px) {
+        .text-glow {
+            text-shadow: 0 0 10px #00f3ff, 0 0 20px #00f3ff;
+        }
     }
     .text-glow-pink {
-        text-shadow: 0 0 10px #ff00ff, 0 0 20px #ff00ff;
+        text-shadow: 0 0 8px #ff00ff, 0 0 15px #ff00ff;
+    }
+    @media (min-width: 768px) {
+        .text-glow-pink {
+            text-shadow: 0 0 10px #ff00ff, 0 0 20px #ff00ff;
+        }
     }
     .glass-panel {
         @apply bg-white/10 backdrop-blur-md border border-white/20 shadow-xl;
+    }
+    /* Touch optimization utility */
+    .touch-manipulation {
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
     }
 }
 

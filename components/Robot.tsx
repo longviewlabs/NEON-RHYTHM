@@ -12,7 +12,7 @@ interface RobotProps {
 
 const Robot: React.FC<RobotProps> = ({ state }) => {
     return (
-        <div className={`transform scale-75 md:scale-100 transition-all duration-500`}>
+        <div className={`transform scale-[0.6] sm:scale-75 md:scale-100 transition-all duration-500`}>
             {/* --- SAD ROBOT --- */}
             {state === 'sad' && (
                 <div className="relative">
