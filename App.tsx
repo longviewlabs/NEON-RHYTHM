@@ -881,7 +881,7 @@ const App: React.FC = () => {
           <div
             className="flex flex-col items-center gap-4 md:gap-6 w-full max-w-4xl animate-pop px-3 md:px-4 overflow-y-auto pb-4"
             style={{
-              paddingBottom: 38,
+              paddingBottom: 68,
             }}
           >
             <Robot state={robotState} />
