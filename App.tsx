@@ -1,541 +1,591 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
-*/
+ */
 
-import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { useMediaPipe } from './hooks/useMediaPipe';
-import Robot from './components/Robot';
-import WebcamPreview from './components/WebcamPreview';
+import React, { useRef, useState, useEffect, useCallback } from "react";
+import { useMediaPipe } from "./hooks/useMediaPipe";
+import Robot from "./components/Robot";
+import WebcamPreview from "./components/WebcamPreview";
 import { GoogleGenAI } from "@google/genai";
-import { DIFFICULTIES, Difficulty, GameStatus, RobotState, GeminiResponse } from './types';
-import { RotateCcw, Volume2, VolumeX } from 'lucide-react';
-import { MUSIC_INTRO_URL, MUSIC_GAME_URL, MUSIC_SCORE_URL, BASE_BPM, AUDIO_OFFSET_MS, FIRST_BEAT_TIME_SEC } from './constants';
+import {
+  DIFFICULTIES,
+  Difficulty,
+  GameStatus,
+  RobotState,
+  GeminiResponse,
+} from "./types";
+import { RotateCcw, Volume2, VolumeX } from "lucide-react";
+import {
+  MUSIC_INTRO_URL,
+  MUSIC_GAME_URL,
+  MUSIC_SCORE_URL,
+  BASE_BPM,
+  AUDIO_OFFSET_MS,
+  FIRST_BEAT_TIME_SEC,
+} from "./constants";
 
 // Initialize AI outside component to avoid re-instantiation memory overhead
 let genAIInstance: GoogleGenAI | null = null;
 const getAI = (apiKey: string) => {
-    if (!genAIInstance) genAIInstance = new GoogleGenAI({ apiKey });
-    return genAIInstance;
+  if (!genAIInstance) genAIInstance = new GoogleGenAI({ apiKey });
+  return genAIInstance;
 };
 
 const App: React.FC = () => {
-    // Hardware Refs
-    const videoRef = useRef<HTMLVideoElement>(null);
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    const audioCtxRef = useRef<AudioContext | null>(null);
-    
-    // Audio Buffers & Source
-    const introBufferRef = useRef<AudioBuffer | null>(null);
-    const gameBufferRef = useRef<AudioBuffer | null>(null);
-    const scoreBufferRef = useRef<AudioBuffer | null>(null);
-    const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
-    const currentGainRef = useRef<GainNode | null>(null);
-    
-    // Memory & Timer Management
-    const gameTimersRef = useRef<(number | NodeJS.Timeout)[]>([]);
-    
-    // Tracking
-    const { isCameraReady, fingerCount, landmarksRef } = useMediaPipe(videoRef);
-    
-    // Ref to track if target was hit at any point during the beat (Mobile optimization)
-    const hasHitCurrentBeatRef = useRef(false);
-    
-    // Ref to track finger count inside intervals/closures
-    const fingerCountRef = useRef(0);
+  // Hardware Refs
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
-    // Game State
-    const [status, setStatus] = useState<GameStatus>(GameStatus.LOADING);
-    const [difficulty, setDifficulty] = useState<Difficulty>('EASY');
-    const [sequence, setSequence] = useState<number[]>([]);
-    const [currentBeat, setCurrentBeat] = useState(-1);
-    const [countdown, setCountdown] = useState<number | null>(null);
-    const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
-    const [isMuted, setIsMuted] = useState(false);
-    
-    // Loading State
-    const [isAssetsReady, setIsAssetsReady] = useState(false);
-    
-    // Real-time Results
-    const [localResults, setLocalResults] = useState<(boolean | null)[]>([]);
+  // Audio Buffers & Source
+  const introBufferRef = useRef<AudioBuffer | null>(null);
+  const gameBufferRef = useRef<AudioBuffer | null>(null);
+  const scoreBufferRef = useRef<AudioBuffer | null>(null);
+  const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const currentGainRef = useRef<GainNode | null>(null);
 
-    // Analysis Results (Gemini)
-    const [robotState, setRobotState] = useState<RobotState>('average');
-    const [resultData, setResultData] = useState<GeminiResponse | null>(null);
+  // Memory & Timer Management
+  const gameTimersRef = useRef<(number | NodeJS.Timeout)[]>([]);
 
-    // Memory Cleanup: Clear all temp data, timers and frames
-    const cleanupTempData = useCallback(() => {
-        // Clear all ghost loops and timers
-        gameTimersRef.current.forEach(id => {
-            if (id) {
-                clearInterval(id as any);
-                clearTimeout(id as any);
-            }
-        });
-        gameTimersRef.current = [];
-        
-        // Reset heavy state
-        setCapturedFrames([]);
-        setLocalResults([]);
-        setCurrentBeat(-1);
-        hasHitCurrentBeatRef.current = false;
-    }, []);
+  // Tracking
+  const { isCameraReady, fingerCount, landmarksRef } = useMediaPipe(videoRef);
 
-    // Sync finger count ref and check for hits
-    useEffect(() => {
-        fingerCountRef.current = fingerCount;
-        
-        // If we are playing, check if this new count matches the current target
-        if (status === GameStatus.PLAYING && currentBeat >= 0 && currentBeat < sequence.length) {
-            if (fingerCount === sequence[currentBeat]) {
-                hasHitCurrentBeatRef.current = true;
-            }
-        }
-    }, [fingerCount, status, currentBeat, sequence]);
+  // Ref to track if target was hit at any point during the beat (Mobile optimization)
+  const hasHitCurrentBeatRef = useRef(false);
 
-    // Generate random sequence based on difficulty
-    const generateSequence = useCallback((diff: Difficulty) => {
-        const config = DIFFICULTIES[diff];
-        return Array.from({ length: config.length }, () => Math.floor(Math.random() * 5) + 1);
-    }, []);
+  // Ref to track finger count inside intervals/closures
+  const fingerCountRef = useRef(0);
 
-    // --- AUDIO SYSTEM ---
-    const loadAudioBuffer = async (url: string, ctx: AudioContext): Promise<AudioBuffer | null> => {
+  // Game State
+  const [status, setStatus] = useState<GameStatus>(GameStatus.LOADING);
+  const [difficulty, setDifficulty] = useState<Difficulty>("EASY");
+  const [sequence, setSequence] = useState<number[]>([]);
+  const [currentBeat, setCurrentBeat] = useState(-1);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
+  const [isMuted, setIsMuted] = useState(false);
+
+  // Loading State
+  const [isAssetsReady, setIsAssetsReady] = useState(false);
+
+  // Real-time Results
+  const [localResults, setLocalResults] = useState<(boolean | null)[]>([]);
+
+  // Analysis Results (Gemini)
+  const [robotState, setRobotState] = useState<RobotState>("average");
+  const [resultData, setResultData] = useState<GeminiResponse | null>(null);
+
+  // Memory Cleanup: Clear all temp data, timers and frames
+  const cleanupTempData = useCallback(() => {
+    // Clear all ghost loops and timers
+    gameTimersRef.current.forEach((id) => {
+      if (id) {
+        clearInterval(id as any);
+        clearTimeout(id as any);
+      }
+    });
+    gameTimersRef.current = [];
+
+    // Reset heavy state
+    setCapturedFrames([]);
+    setLocalResults([]);
+    setCurrentBeat(-1);
+    hasHitCurrentBeatRef.current = false;
+  }, []);
+
+  // Sync finger count ref and check for hits
+  useEffect(() => {
+    fingerCountRef.current = fingerCount;
+
+    // If we are playing, check if this new count matches the current target
+    if (
+      status === GameStatus.PLAYING &&
+      currentBeat >= 0 &&
+      currentBeat < sequence.length
+    ) {
+      if (fingerCount === sequence[currentBeat]) {
+        hasHitCurrentBeatRef.current = true;
+      }
+    }
+  }, [fingerCount, status, currentBeat, sequence]);
+
+  // Generate random sequence based on difficulty
+  const generateSequence = useCallback((diff: Difficulty) => {
+    const config = DIFFICULTIES[diff];
+    return Array.from(
+      { length: config.length },
+      () => Math.floor(Math.random() * 5) + 1
+    );
+  }, []);
+
+  // --- AUDIO SYSTEM ---
+  const loadAudioBuffer = async (
+    url: string,
+    ctx: AudioContext
+  ): Promise<AudioBuffer | null> => {
+    try {
+      const res = await fetch(url);
+      const arrayBuffer = await res.arrayBuffer();
+      return await ctx.decodeAudioData(arrayBuffer);
+    } catch (e) {
+      console.error(`Failed to load audio: ${url}`, e);
+      return null;
+    }
+  };
+
+  const initAudio = useCallback(async () => {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext ||
+        (window as any).webkitAudioContext)();
+    }
+    const ctx = audioCtxRef.current;
+
+    // Load all tracks in parallel
+    const [intro, game, score] = await Promise.all([
+      introBufferRef.current
+        ? Promise.resolve(introBufferRef.current)
+        : loadAudioBuffer(MUSIC_INTRO_URL, ctx),
+      gameBufferRef.current
+        ? Promise.resolve(gameBufferRef.current)
+        : loadAudioBuffer(MUSIC_GAME_URL, ctx),
+      scoreBufferRef.current
+        ? Promise.resolve(scoreBufferRef.current)
+        : loadAudioBuffer(MUSIC_SCORE_URL, ctx),
+    ]);
+
+    introBufferRef.current = intro;
+    gameBufferRef.current = game;
+    scoreBufferRef.current = score;
+  }, []);
+
+  // Start loading assets immediately on mount
+  useEffect(() => {
+    const loadAssets = async () => {
+      await initAudio();
+      setIsAssetsReady(true);
+    };
+    loadAssets();
+  }, [initAudio]);
+
+  // Generic Play Track Function (mute only affects background music)
+  // startOffset: time in seconds to start playback from (for skipping intros)
+  const playTrack = useCallback(
+    (type: "intro" | "game" | "score", startOffset: number = 0) => {
+      if (!audioCtxRef.current) return;
+
+      // Stop currently playing track
+      if (currentSourceRef.current) {
         try {
-            const res = await fetch(url);
-            const arrayBuffer = await res.arrayBuffer();
-            return await ctx.decodeAudioData(arrayBuffer);
-        } catch (e) {
-            console.error(`Failed to load audio: ${url}`, e);
-            return null;
-        }
-    };
+          currentSourceRef.current.stop();
+        } catch (e) {}
+        currentSourceRef.current = null;
+      }
 
-    const initAudio = useCallback(async () => {
-        if (!audioCtxRef.current) {
-            audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        }
-        const ctx = audioCtxRef.current;
+      const ctx = audioCtxRef.current;
+      let buffer: AudioBuffer | null = null;
+      let volume = 0.5;
+      let loop = true;
+      let playbackRate = 1.0;
+      let offset = startOffset;
 
-        // Load all tracks in parallel
-        const [intro, game, score] = await Promise.all([
-            introBufferRef.current ? Promise.resolve(introBufferRef.current) : loadAudioBuffer(MUSIC_INTRO_URL, ctx),
-            gameBufferRef.current ? Promise.resolve(gameBufferRef.current) : loadAudioBuffer(MUSIC_GAME_URL, ctx),
-            scoreBufferRef.current ? Promise.resolve(scoreBufferRef.current) : loadAudioBuffer(MUSIC_SCORE_URL, ctx),
-        ]);
-        
-        introBufferRef.current = intro;
-        gameBufferRef.current = game;
-        scoreBufferRef.current = score;
-    }, []);
+      switch (type) {
+        case "intro":
+          buffer = introBufferRef.current;
+          volume = 0.2;
+          offset = 0; // Always start intro from beginning
+          break;
+        case "game":
+          buffer = gameBufferRef.current;
+          volume = 0.5;
+          // Pitch shift for game difficulty
+          const targetBPM = DIFFICULTIES[difficulty].bpm;
+          playbackRate = targetBPM / BASE_BPM;
+          // Adjust offset for playback rate (faster = less time to first beat)
+          offset = startOffset / playbackRate;
+          break;
+        case "score":
+          buffer = scoreBufferRef.current;
+          volume = 0.2;
+          offset = 0; // Always start score from beginning
+          break;
+      }
 
-    // Start loading assets immediately on mount
-    useEffect(() => {
-        const loadAssets = async () => {
-            await initAudio();
-            setIsAssetsReady(true);
-        };
-        loadAssets();
-    }, [initAudio]);
+      if (buffer) {
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.loop = loop;
+        source.playbackRate.value = playbackRate;
 
-    // Generic Play Track Function (mute only affects background music)
-    // startOffset: time in seconds to start playback from (for skipping intros)
-    const playTrack = useCallback((type: 'intro' | 'game' | 'score', startOffset: number = 0) => {
-        if (!audioCtxRef.current) return;
-        
-        // Stop currently playing track
-        if (currentSourceRef.current) {
-            try { currentSourceRef.current.stop(); } catch(e) {}
-            currentSourceRef.current = null;
-        }
-
-        const ctx = audioCtxRef.current;
-        let buffer: AudioBuffer | null = null;
-        let volume = 0.5;
-        let loop = true;
-        let playbackRate = 1.0;
-        let offset = startOffset;
-
-        switch (type) {
-            case 'intro':
-                buffer = introBufferRef.current;
-                volume = 0.2;
-                offset = 0; // Always start intro from beginning
-                break;
-            case 'game':
-                buffer = gameBufferRef.current;
-                volume = 0.5;
-                // Pitch shift for game difficulty
-                const targetBPM = DIFFICULTIES[difficulty].bpm;
-                playbackRate = targetBPM / BASE_BPM;
-                // Adjust offset for playback rate (faster = less time to first beat)
-                offset = startOffset / playbackRate;
-                break;
-            case 'score':
-                buffer = scoreBufferRef.current;
-                volume = 0.2;
-                offset = 0; // Always start score from beginning
-                break;
-        }
-
-        if (buffer) {
-            const source = ctx.createBufferSource();
-            source.buffer = buffer;
-            source.loop = loop;
-            source.playbackRate.value = playbackRate;
-
-            const gain = ctx.createGain();
-            // Set volume to 0 if muted, otherwise use the normal volume
-            gain.gain.value = isMuted ? 0 : volume;
-
-            source.connect(gain);
-            gain.connect(ctx.destination);
-            // Start from offset position (skip intro if specified)
-            source.start(0, offset);
-            currentSourceRef.current = source;
-            currentGainRef.current = gain; // Store gain reference for mute control
-        }
-    }, [isMuted, difficulty]);
-
-    const stopMusic = useCallback(() => {
-        if (currentSourceRef.current) {
-            try { currentSourceRef.current.stop(); } catch(e) {}
-            currentSourceRef.current = null;
-        }
-        currentGainRef.current = null;
-    }, []);
-
-    // Handle "Enter Studio" button click
-    const handleEnterStudio = useCallback(() => {
-        if (!isAssetsReady) return;
-        
-        // Resume AudioContext (required after user gesture)
-        if (audioCtxRef.current?.state === 'suspended') {
-            audioCtxRef.current.resume();
-        }
-        
-        setStatus(GameStatus.MENU);
-        playTrack('intro');
-    }, [isAssetsReady, playTrack]);
-
-    // Effect to switch music based on state (except Playing, which is handled in startGame)
-    useEffect(() => {
-        if (!audioCtxRef.current) return;
-
-        if (status === GameStatus.MENU) {
-            playTrack('intro');
-        } else if (status === GameStatus.RESULT || status === GameStatus.ANALYZING) {
-            playTrack('score');
-        }
-    }, [status, playTrack]);
-
-    // Update volume of currently playing music when mute state changes
-    useEffect(() => {
-        if (!currentGainRef.current || !audioCtxRef.current) return;
-        
-        const gain = currentGainRef.current;
-        const ctx = audioCtxRef.current;
-        
-        // Determine the target volume based on current track type
-        let targetVolume = 0.5;
-        if (status === GameStatus.MENU && introBufferRef.current) {
-            targetVolume = 0.2;
-        } else if ((status === GameStatus.RESULT || status === GameStatus.ANALYZING) && scoreBufferRef.current) {
-            targetVolume = 0.2;
-        } else if (status === GameStatus.PLAYING && gameBufferRef.current) {
-            targetVolume = 0.5;
-        }
-        
-        // Apply mute: set to 0 if muted, otherwise use target volume
-        const now = ctx.currentTime;
-        gain.gain.cancelScheduledValues(now);
-        gain.gain.setValueAtTime(isMuted ? 0 : targetVolume, now);
-    }, [isMuted, status]);
-
-    // Countdown beep: Matches index copy.html (always plays, not affected by mute)
-    const playCountdownBeep = useCallback((count: number) => {
-        if (!audioCtxRef.current) return;
-        const ctx = audioCtxRef.current;
-        const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        
-        osc.connect(gain);
+        // Set volume to 0 if muted, otherwise use the normal volume
+        gain.gain.value = isMuted ? 0 : volume;
+
+        source.connect(gain);
         gain.connect(ctx.destination);
-        osc.frequency.value = 400 + (count * 100); // Pitch shift based on count
-        gain.gain.value = 0.1;
-        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.1);
-        
-        osc.start();
-        osc.stop(ctx.currentTime + 0.1);
+        // Start from offset position (skip intro if specified)
+        source.start(0, offset);
+        currentSourceRef.current = source;
+        currentGainRef.current = gain; // Store gain reference for mute control
+      }
+    },
+    [isMuted, difficulty]
+  );
 
-        // Disconnect nodes to free memory after sound ends
-        setTimeout(() => {
-            osc.disconnect();
-            gain.disconnect();
-        }, 200);
-    }, []);
+  const stopMusic = useCallback(() => {
+    if (currentSourceRef.current) {
+      try {
+        currentSourceRef.current.stop();
+      } catch (e) {}
+      currentSourceRef.current = null;
+    }
+    currentGainRef.current = null;
+  }, []);
 
-    // Metronome sound: Matches index copy.html rhythm engine (always plays, not affected by mute)
-    const playTick = useCallback((beatNumber: number) => {
-        if (!audioCtxRef.current) return;
-        const ctx = audioCtxRef.current;
-        const osc = ctx.createOscillator();
-        const envelope = ctx.createGain();
-        
-        osc.connect(envelope);
-        envelope.connect(ctx.destination);
-        
-        // Sound properties - match HTML version
-        if (beatNumber === 0) {
-            osc.frequency.value = 1200.0; // High sharp tick for beat 1
-        } else {
-            osc.frequency.value = 800.0;  // Lower tick
-        }
-        
-        // Very short, percussive tick
-        envelope.gain.value = 0.15;
-        envelope.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
-        
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.05);
+  // Handle "Enter Studio" button click
+  const handleEnterStudio = useCallback(() => {
+    if (!isAssetsReady) return;
 
-        // Disconnect nodes to free memory
-        setTimeout(() => {
-            osc.disconnect();
-            envelope.disconnect();
-        }, 100);
-    }, []);
+    // Resume AudioContext (required after user gesture)
+    if (audioCtxRef.current?.state === "suspended") {
+      audioCtxRef.current.resume();
+    }
 
-    // Success: Pleasant major chord chime
-    const playSuccessSound = useCallback(() => {
-        if (!audioCtxRef.current || isMuted) return;
-        const ctx = audioCtxRef.current;
-        const now = ctx.currentTime;
+    setStatus(GameStatus.MENU);
+    playTrack("intro");
+  }, [isAssetsReady, playTrack]);
 
-        // Create a simple major triad
-        [523.25, 659.25, 783.99].forEach((freq, i) => { // C Major (C5, E5, G5)
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            
-            osc.type = 'sine';
-            osc.frequency.value = freq;
-            
-            gain.gain.setValueAtTime(0.05, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3 + (i * 0.1));
-            
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start();
-            osc.stop(now + 0.5);
+  // Effect to switch music based on state (except Playing, which is handled in startGame)
+  useEffect(() => {
+    if (!audioCtxRef.current) return;
 
-            // Cleanup
-            setTimeout(() => {
-                osc.disconnect();
-                gain.disconnect();
-            }, 600);
-        });
-    }, [isMuted]);
+    if (status === GameStatus.MENU) {
+      playTrack("intro");
+    } else if (
+      status === GameStatus.RESULT ||
+      status === GameStatus.ANALYZING
+    ) {
+      playTrack("score");
+    }
+  }, [status, playTrack]);
 
-    // Fail: Low buzzy saw wave
-    const playFailSound = useCallback(() => {
-        if (!audioCtxRef.current || isMuted) return;
-        const ctx = audioCtxRef.current;
-        const now = ctx.currentTime;
+  // Update volume of currently playing music when mute state changes
+  useEffect(() => {
+    if (!currentGainRef.current || !audioCtxRef.current) return;
 
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(150, now);
-        osc.frequency.linearRampToValueAtTime(50, now + 0.3);
-        
-        gain.gain.setValueAtTime(0.1, now);
-        gain.gain.linearRampToValueAtTime(0.001, now + 0.3);
-        
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(now + 0.3);
+    const gain = currentGainRef.current;
+    const ctx = audioCtxRef.current;
 
-        // Cleanup
-        setTimeout(() => {
-            osc.disconnect();
-            gain.disconnect();
-        }, 400);
-    }, [isMuted]);
+    // Determine the target volume based on current track type
+    let targetVolume = 0.5;
+    if (status === GameStatus.MENU && introBufferRef.current) {
+      targetVolume = 0.2;
+    } else if (
+      (status === GameStatus.RESULT || status === GameStatus.ANALYZING) &&
+      scoreBufferRef.current
+    ) {
+      targetVolume = 0.2;
+    } else if (status === GameStatus.PLAYING && gameBufferRef.current) {
+      targetVolume = 0.5;
+    }
 
-    // --- GAME LOOP ---
-    const startGame = async () => {
-        cleanupTempData(); // Clear memory/timers from previous rounds
-        
-        const newSequence = generateSequence(difficulty);
-        setSequence(newSequence);
-        setLocalResults(new Array(newSequence.length).fill(null));
-        setCapturedFrames([]);
-        setResultData(null);
-        setStatus(GameStatus.PLAYING);
-        setRobotState('average');
-        setCurrentBeat(-1);
-        hasHitCurrentBeatRef.current = false;
-        
-        // Calculate timing based on difficulty's playback rate
-        const targetBPM = DIFFICULTIES[difficulty].bpm;
-        const playbackRate = targetBPM / BASE_BPM;
-        
-        // Time until first beat at current playback rate
-        const timeToFirstBeat = FIRST_BEAT_TIME_SEC / playbackRate;
-        
-        // We have a 3-second countdown, so:
-        // - If first beat is at 3s (at 1x speed), start music immediately
-        // - If first beat takes longer, delay music start
-        // - If first beat comes sooner, start music from an offset
-        
-        const countdownDuration = 3; // 3 seconds countdown
-        
-        if (timeToFirstBeat >= countdownDuration) {
-            // First beat comes after countdown - start music now, it will sync
-            playTrack('game', 0);
-            
-            // Wait for the difference, then start countdown
-            const waitTime = (timeToFirstBeat - countdownDuration) * 1000;
-            const timerId = setTimeout(() => {
-                startCountdown(newSequence);
-            }, waitTime);
-            gameTimersRef.current.push(timerId);
-        } else {
-            // First beat comes before countdown ends - skip intro
-            // Start music from a point so first beat aligns with countdown end
-            const skipAmount = FIRST_BEAT_TIME_SEC; // Skip the intro
-            playTrack('game', skipAmount);
-            
-            // Start countdown immediately
-            startCountdown(newSequence);
-        }
-    };
-    
-    // Separated countdown logic for cleaner code
-    const startCountdown = (newSequence: number[]) => {
-        let count = 3;
-        setCountdown(count);
+    // Apply mute: set to 0 if muted, otherwise use target volume
+    const now = ctx.currentTime;
+    gain.gain.cancelScheduledValues(now);
+    gain.gain.setValueAtTime(isMuted ? 0 : targetVolume, now);
+  }, [isMuted, status]);
+
+  // Countdown beep: Matches index copy.html (always plays, not affected by mute)
+  const playCountdownBeep = useCallback((count: number) => {
+    if (!audioCtxRef.current) return;
+    const ctx = audioCtxRef.current;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 400 + count * 100; // Pitch shift based on count
+    gain.gain.value = 0.1;
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.1);
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.1);
+
+    // Disconnect nodes to free memory after sound ends
+    setTimeout(() => {
+      osc.disconnect();
+      gain.disconnect();
+    }, 200);
+  }, []);
+
+  // Metronome sound: Matches index copy.html rhythm engine (always plays, not affected by mute)
+  const playTick = useCallback((beatNumber: number) => {
+    if (!audioCtxRef.current) return;
+    const ctx = audioCtxRef.current;
+    const osc = ctx.createOscillator();
+    const envelope = ctx.createGain();
+
+    osc.connect(envelope);
+    envelope.connect(ctx.destination);
+
+    // Sound properties - match HTML version
+    if (beatNumber === 0) {
+      osc.frequency.value = 1200.0; // High sharp tick for beat 1
+    } else {
+      osc.frequency.value = 800.0; // Lower tick
+    }
+
+    // Very short, percussive tick
+    envelope.gain.value = 0.15;
+    envelope.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.05);
+
+    // Disconnect nodes to free memory
+    setTimeout(() => {
+      osc.disconnect();
+      envelope.disconnect();
+    }, 100);
+  }, []);
+
+  // Success: Pleasant major chord chime
+  const playSuccessSound = useCallback(() => {
+    if (!audioCtxRef.current || isMuted) return;
+    const ctx = audioCtxRef.current;
+    const now = ctx.currentTime;
+
+    // Create a simple major triad
+    [523.25, 659.25, 783.99].forEach((freq, i) => {
+      // C Major (C5, E5, G5)
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.value = freq;
+
+      gain.gain.setValueAtTime(0.05, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3 + i * 0.1);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(now + 0.5);
+
+      // Cleanup
+      setTimeout(() => {
+        osc.disconnect();
+        gain.disconnect();
+      }, 600);
+    });
+  }, [isMuted]);
+
+  // Fail: Low buzzy saw wave
+  const playFailSound = useCallback(() => {
+    if (!audioCtxRef.current || isMuted) return;
+    const ctx = audioCtxRef.current;
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(150, now);
+    osc.frequency.linearRampToValueAtTime(50, now + 0.3);
+
+    gain.gain.setValueAtTime(0.1, now);
+    gain.gain.linearRampToValueAtTime(0.001, now + 0.3);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(now + 0.3);
+
+    // Cleanup
+    setTimeout(() => {
+      osc.disconnect();
+      gain.disconnect();
+    }, 400);
+  }, [isMuted]);
+
+  // --- GAME LOOP ---
+  const startGame = async () => {
+    cleanupTempData(); // Clear memory/timers from previous rounds
+
+    const newSequence = generateSequence(difficulty);
+    setSequence(newSequence);
+    setLocalResults(new Array(newSequence.length).fill(null));
+    setCapturedFrames([]);
+    setResultData(null);
+    setStatus(GameStatus.PLAYING);
+    setRobotState("average");
+    setCurrentBeat(-1);
+    hasHitCurrentBeatRef.current = false;
+
+    // Calculate timing based on difficulty's playback rate
+    const targetBPM = DIFFICULTIES[difficulty].bpm;
+    const playbackRate = targetBPM / BASE_BPM;
+
+    // Time until first beat at current playback rate
+    const timeToFirstBeat = FIRST_BEAT_TIME_SEC / playbackRate;
+
+    // We have a 3-second countdown, so:
+    // - If first beat is at 3s (at 1x speed), start music immediately
+    // - If first beat takes longer, delay music start
+    // - If first beat comes sooner, start music from an offset
+
+    const countdownDuration = 3; // 3 seconds countdown
+
+    if (timeToFirstBeat >= countdownDuration) {
+      // First beat comes after countdown - start music now, it will sync
+      playTrack("game", 0);
+
+      // Wait for the difference, then start countdown
+      const waitTime = (timeToFirstBeat - countdownDuration) * 1000;
+      const timerId = setTimeout(() => {
+        startCountdown(newSequence);
+      }, waitTime);
+      gameTimersRef.current.push(timerId);
+    } else {
+      // First beat comes before countdown ends - skip intro
+      // Start music from a point so first beat aligns with countdown end
+      const skipAmount = FIRST_BEAT_TIME_SEC; // Skip the intro
+      playTrack("game", skipAmount);
+
+      // Start countdown immediately
+      startCountdown(newSequence);
+    }
+  };
+
+  // Separated countdown logic for cleaner code
+  const startCountdown = (newSequence: number[]) => {
+    let count = 3;
+    setCountdown(count);
+    playCountdownBeep(count);
+
+    const timerId = setInterval(() => {
+      count--;
+      setCountdown(count);
+
+      if (count > 0) {
         playCountdownBeep(count);
-        
-        const timerId = setInterval(() => {
-            count--;
-            setCountdown(count);
-            
-            if (count > 0) {
-                playCountdownBeep(count);
-            }
-            
-            if (count === 0) {
-                clearInterval(timerId);
-                setCountdown(null);
-                // Start sequence immediately - synced with first beat!
-                runSequence(newSequence);
-            }
-        }, 1000);
-        gameTimersRef.current.push(timerId);
-    };
+      }
 
-    const runSequence = (seq: number[]) => {
-        // playMusic(); // Removed: Handled in startGame now
-        const bpm = DIFFICULTIES[difficulty].bpm;
-        const interval = 60000 / bpm;
-        let beat = 0; // Start at 0
-        const frames: string[] = [];
-        const results: (boolean | null)[] = new Array(seq.length).fill(null);
+      if (count === 0) {
+        clearInterval(timerId);
+        setCountdown(null);
+        // Start sequence immediately - synced with first beat!
+        runSequence(newSequence);
+      }
+    }, 1000);
+    gameTimersRef.current.push(timerId);
+  };
 
-        // Pre-set canvas size for optimized capture (Low res is enough for AI)
-        if (canvasRef.current) {
-            canvasRef.current.width = 320;
-            canvasRef.current.height = 240;
+  const runSequence = (seq: number[]) => {
+    // playMusic(); // Removed: Handled in startGame now
+    const bpm = DIFFICULTIES[difficulty].bpm;
+    const interval = 60000 / bpm;
+    let beat = 0; // Start at 0
+    const frames: string[] = [];
+    const results: (boolean | null)[] = new Array(seq.length).fill(null);
+
+    // Pre-set canvas size for optimized capture (Low res is enough for AI)
+    if (canvasRef.current) {
+      canvasRef.current.width = 320;
+      canvasRef.current.height = 240;
+    }
+
+    // Start the beat loop after audio offset for perfect sync
+    const startBeatLoop = () => {
+      // Show first beat immediately when sequence starts
+      setCurrentBeat(0);
+
+      // Use consistent interval from the start - first callback happens after one interval
+      const loopId = setInterval(() => {
+        // JUDGE THE PREVIOUS BEAT (The one we just finished showing)
+        if (beat >= 0 && beat < seq.length) {
+          // ... (frame capture remains same) ...
+          if (videoRef.current && canvasRef.current) {
+            const canvas = canvasRef.current;
+            const video = videoRef.current;
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              // Draw at the fixed small size to save memory and CPU
+              ctx.drawImage(video, 0, 0, 320, 240);
+              frames.push(canvas.toDataURL("image/jpeg", 0.5)); // 50% quality is plenty
+            }
+          }
+
+          // JUDGMENT: Use the "hasHit" flag which caught the gesture at any point in the beat
+          const isHit = hasHitCurrentBeatRef.current;
+          results[beat] = isHit;
+          setLocalResults([...results]); // Update UI
+
+          if (isHit) playSuccessSound();
+          else playFailSound();
         }
 
-        // Start the beat loop after audio offset for perfect sync
-        const startBeatLoop = () => {
-            // Show first beat immediately when sequence starts
-            setCurrentBeat(0);
+        // Increment to next beat
+        beat++;
+        hasHitCurrentBeatRef.current = false; // Reset for the new beat
 
-            // Use consistent interval from the start - first callback happens after one interval
-            const loopId = setInterval(() => {
-            // JUDGE THE PREVIOUS BEAT (The one we just finished showing)
-            if (beat >= 0 && beat < seq.length) {
-                // ... (frame capture remains same) ...
-                if (videoRef.current && canvasRef.current) {
-                    const canvas = canvasRef.current;
-                    const video = videoRef.current;
-                    const ctx = canvas.getContext('2d');
-                    if (ctx) {
-                        // Draw at the fixed small size to save memory and CPU
-                        ctx.drawImage(video, 0, 0, 320, 240);
-                        frames.push(canvas.toDataURL('image/jpeg', 0.5)); // 50% quality is plenty
-                    }
-                }
-
-                // JUDGMENT: Use the "hasHit" flag which caught the gesture at any point in the beat
-                const isHit = hasHitCurrentBeatRef.current;
-                results[beat] = isHit;
-                setLocalResults([...results]); // Update UI
-
-                if (isHit) playSuccessSound();
-                else playFailSound();
-            }
-
-            // Increment to next beat
-            beat++;
-            hasHitCurrentBeatRef.current = false; // Reset for the new beat
-
-            // Check if we've shown all beats
-            if (beat >= seq.length) {
-                clearInterval(loopId);
-                // Last beat was already judged and captured in the loop above
-                // Music transition handled by state change to ANALYZING/RESULT
-                setCapturedFrames(frames);
-                analyzeGame(seq, frames, results);
-                return;
-            }
-
-            // Show current beat
-            setCurrentBeat(beat);
-            }, interval);
-            gameTimersRef.current.push(loopId);
-        };
-
-        // Apply audio offset for sync - if 0, start immediately
-        if (AUDIO_OFFSET_MS > 0) {
-            const timerId = setTimeout(startBeatLoop, AUDIO_OFFSET_MS);
-            gameTimersRef.current.push(timerId);
-        } else {
-            startBeatLoop();
+        // Check if we've shown all beats
+        if (beat >= seq.length) {
+          clearInterval(loopId);
+          // Last beat was already judged and captured in the loop above
+          // Music transition handled by state change to ANALYZING/RESULT
+          setCapturedFrames(frames);
+          analyzeGame(seq, frames, results);
+          return;
         }
+
+        // Show current beat
+        setCurrentBeat(beat);
+      }, interval);
+      gameTimersRef.current.push(loopId);
     };
 
-    const analyzeGame = async (seq: number[], frames: string[], localResults: (boolean | null)[]) => {
-        setStatus(GameStatus.ANALYZING);
-        // playTrack('score'); // Handled by useEffect monitoring status
-        setRobotState('analyzing');
-        
-        // Calculate local score for fallback
-        const localCorrectCount = localResults.filter(r => r === true).length;
-        const localScore = Math.round((localCorrectCount / seq.length) * 100);
+    // Apply audio offset for sync - if 0, start immediately
+    if (AUDIO_OFFSET_MS > 0) {
+      const timerId = setTimeout(startBeatLoop, AUDIO_OFFSET_MS);
+      gameTimersRef.current.push(timerId);
+    } else {
+      startBeatLoop();
+    }
+  };
 
-        try {
-            // Reuse persistent AI instance
-            const ai = getAI(process.env.API_KEY || "");
-            
-            // Prepare image parts
-            const imageParts = frames.map(dataUrl => ({
-                inlineData: {
-                    mimeType: 'image/jpeg',
-                    data: dataUrl.split(',')[1]
-                }
-            }));
+  const analyzeGame = async (
+    seq: number[],
+    frames: string[],
+    localResults: (boolean | null)[]
+  ) => {
+    setStatus(GameStatus.ANALYZING);
+    // playTrack('score'); // Handled by useEffect monitoring status
+    setRobotState("analyzing");
 
-            const prompt = `
+    // Calculate local score for fallback
+    const localCorrectCount = localResults.filter((r) => r === true).length;
+    const localScore = Math.round((localCorrectCount / seq.length) * 100);
+
+    try {
+      // Reuse persistent AI instance
+      const ai = getAI(process.env.API_KEY || "");
+
+      // Prepare image parts
+      const imageParts = frames.map((dataUrl) => ({
+        inlineData: {
+          mimeType: "image/jpeg",
+          data: dataUrl.split(",")[1],
+        },
+      }));
+
+      const prompt = `
                 You are a judge for a rhythm game.
                 The player had to show a specific number of fingers for each beat.
-                Target Sequence: [${seq.join(', ')}].
-                I have provided ${frames.length} images, one captured for each beat.
+                Target Sequence: [${seq.join(", ")}].
+                I have provided ${
+                  frames.length
+                } images, one captured for each beat.
                 
                 YOUR TASK:
                 1. Count the extended fingers in each image. (0 for fist).
@@ -553,354 +603,392 @@ const App: React.FC = () => {
                 }
             `;
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.0-flash',
-                contents: [
-                    {
-                        parts: [
-                            { text: prompt },
-                            ...imageParts
-                        ]
-                    }
-                ],
-                config: {
-                    responseMimeType: "application/json"
-                }
-            });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [
+          {
+            parts: [{ text: prompt }, ...imageParts],
+          },
+        ],
+        config: {
+          responseMimeType: "application/json",
+        },
+      });
 
-            const responseText = response.text;
-            if (!responseText) throw new Error("Empty response from AI");
-            
-            const data: GeminiResponse = JSON.parse(responseText);
-            
-            setResultData(data);
-            setRobotState(data.success ? 'happy' : 'sad');
-            setStatus(GameStatus.RESULT);
+      const responseText = response.text;
+      if (!responseText) throw new Error("Empty response from AI");
 
-        } catch (error) {
-            console.error("Gemini Analysis Failed", error);
-            // Fallback to local results if API fails
-            setRobotState(localScore > 60 ? 'happy' : 'sad');
-            setResultData({
-                success: localScore > 60,
-                correct_count: localCorrectCount,
-                score: localScore,
-                feedback: "AI Offline. Using local judgment.",
-                detailed_results: localResults.map(r => r === true),
-                detected_counts: seq.map(() => 0) // Placeholder
-            });
-            setStatus(GameStatus.RESULT);
-        }
-    };
+      const data: GeminiResponse = JSON.parse(responseText);
 
-    // --- RENDER ---
-    const beatDuration = 60 / DIFFICULTIES[difficulty].bpm; // in seconds
+      setResultData(data);
+      setRobotState(data.success ? "happy" : "sad");
+      setStatus(GameStatus.RESULT);
+    } catch (error) {
+      console.error("Gemini Analysis Failed", error);
+      // Fallback to local results if API fails
+      setRobotState(localScore > 60 ? "happy" : "sad");
+      setResultData({
+        success: localScore > 60,
+        correct_count: localCorrectCount,
+        score: localScore,
+        feedback: "AI Offline. Using local judgment.",
+        detailed_results: localResults.map((r) => r === true),
+        detected_counts: seq.map(() => 0), // Placeholder
+      });
+      setStatus(GameStatus.RESULT);
+    }
+  };
 
-    return (
-        <div className="relative w-full h-screen bg-[#050510] overflow-hidden text-white font-sans selection:bg-[#ff00ff]">
-            {/* Hidden Canvas for capture */}
-            <canvas ref={canvasRef} className="hidden" />
-            
-            {/* Background Video */}
-            <video 
-                ref={videoRef} 
-                className="absolute inset-0 w-full h-full object-cover opacity-30 scale-x-[-1]" 
-                playsInline 
-                muted 
-                autoPlay
-            />
-            
-            {/* SKELETON OVERLAY */}
-            <WebcamPreview 
-                videoRef={videoRef} 
-                landmarksRef={landmarksRef} 
-                isCameraReady={isCameraReady} 
-            />
+  // --- RENDER ---
+  const beatDuration = 60 / DIFFICULTIES[difficulty].bpm; // in seconds
 
-            {/* Overlay Gradient */}
-            <div className="absolute inset-0 bg-gradient-to-t from-[#050510] via-transparent to-[#050510]/80 pointer-events-none" />
+  return (
+    <div className="relative w-full h-screen bg-[#050510] overflow-hidden text-white font-sans selection:bg-[#ff00ff]">
+      {/* Hidden Canvas for capture */}
+      <canvas ref={canvasRef} className="hidden" />
 
-            {/* Mute Button */}
-            <button 
-                onClick={() => setIsMuted(!isMuted)} 
-                className="absolute top-4 right-4 md:top-6 md:right-6 z-50 p-3 md:p-3 bg-white/10 rounded-full hover:bg-white/20 active:bg-white/30 transition-all pointer-events-auto touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-            >
-                {isMuted ? <VolumeX size={20} className="md:w-6 md:h-6" /> : <Volume2 size={20} className="md:w-6 md:h-6" />}
-            </button>
+      {/* Background Video */}
+      <video
+        ref={videoRef}
+        className="absolute inset-0 w-full h-full object-cover opacity-30 scale-x-[-1]"
+        playsInline
+        muted
+        autoPlay
+      />
 
-            {/* DETECTED NUMBER - TOP CENTER */}
-            {isCameraReady && status !== GameStatus.RESULT && status !== GameStatus.LOADING && (
-                <div className="absolute top-4 md:top-8 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center pointer-events-none">
-                    <div className="text-[10px] md:text-[12px] text-[#00f3ff] tracking-[0.2em] md:tracking-[0.3em] font-bold mb-0.5 md:mb-1 uppercase text-glow">
-                        Finger Count
-                    </div>
-                    <div className="text-5xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-[#00f3ff] drop-shadow-[0_0_15px_rgba(0,243,255,0.6)] md:drop-shadow-[0_0_20px_rgba(0,243,255,0.8)]">
-                        {fingerCount}
-                    </div>
-                </div>
-            )}
+      {/* SKELETON OVERLAY */}
+      <WebcamPreview
+        videoRef={videoRef}
+        landmarksRef={landmarksRef}
+        isCameraReady={isCameraReady}
+      />
 
-            {/* Main Content Container */}
-            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-3 md:p-4">
-                
-                {/* --- LOADING STATE (Entry Screen) --- */}
-                {status === GameStatus.LOADING && (
-                    <div className="glass-panel p-6 md:p-8 rounded-3xl max-w-md w-full mx-4 flex flex-col gap-5 md:gap-6 animate-pop">
-                        {/* Title */}
-                        <div className="text-center">
-                            <h1 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] mb-1 md:mb-2">
-                                RHYTHM HANDS
-                            </h1>
-                            <p className="text-white/60 text-xs md:text-sm">
-                                {isAssetsReady ? 'System Ready.' : 'Loading assets...'}
-                            </p>
-                        </div>
+      {/* Overlay Gradient */}
+      <div className="absolute inset-0 bg-gradient-to-t from-[#050510] via-transparent to-[#050510]/80 pointer-events-none" />
 
-                        {/* Enter Button */}
-                        <button
-                            onClick={handleEnterStudio}
-                            disabled={!isAssetsReady}
-                            className={`
+      {/* Mute Button */}
+      <button
+        onClick={() => setIsMuted(!isMuted)}
+        className="absolute top-4 right-4 md:top-6 md:right-6 z-50 p-3 md:p-3 bg-white/10 rounded-full hover:bg-white/20 active:bg-white/30 transition-all pointer-events-auto touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
+      >
+        {isMuted ? (
+          <VolumeX size={20} className="md:w-6 md:h-6" />
+        ) : (
+          <Volume2 size={20} className="md:w-6 md:h-6" />
+        )}
+      </button>
+
+      {/* DETECTED NUMBER - TOP CENTER */}
+      {isCameraReady &&
+        status !== GameStatus.RESULT &&
+        status !== GameStatus.LOADING && (
+          <div className="absolute top-4 md:top-8 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center pointer-events-none">
+            <div className="text-[10px] md:text-[12px] text-[#00f3ff] tracking-[0.2em] md:tracking-[0.3em] font-bold mb-0.5 md:mb-1 uppercase text-glow">
+              Finger Count
+            </div>
+            <div className="text-5xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-[#00f3ff] drop-shadow-[0_0_15px_rgba(0,243,255,0.6)] md:drop-shadow-[0_0_20px_rgba(0,243,255,0.8)]">
+              {fingerCount}
+            </div>
+          </div>
+        )}
+
+      {/* Main Content Container */}
+      <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-3 md:p-4">
+        {/* --- LOADING STATE (Entry Screen) --- */}
+        {status === GameStatus.LOADING && (
+          <div className="glass-panel p-6 md:p-8 rounded-3xl max-w-md w-full mx-4 flex flex-col gap-5 md:gap-6 animate-pop">
+            {/* Title */}
+            <div className="text-center">
+              <h1 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] mb-1 md:mb-2">
+                RHYTHM HANDS
+              </h1>
+              <p className="text-white/60 text-xs md:text-sm">
+                {isAssetsReady ? "System Ready." : "Loading assets..."}
+              </p>
+            </div>
+
+            {/* Enter Button */}
+            <button
+              onClick={handleEnterStudio}
+              disabled={!isAssetsReady}
+              className={`
                                 w-full py-3 md:py-4 rounded-xl text-base md:text-lg font-black uppercase tracking-widest transition-all duration-300
-                                ${isAssetsReady 
-                                    ? 'bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] text-black hover:shadow-[0_0_30px_rgba(255,255,255,0.5)] active:scale-95' 
-                                    : 'bg-white/10 text-white/30 cursor-not-allowed'
+                                ${
+                                  isAssetsReady
+                                    ? "bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] text-black hover:shadow-[0_0_30px_rgba(255,255,255,0.5)] active:scale-95"
+                                    : "bg-white/10 text-white/30 cursor-not-allowed"
                                 }
                                 shadow-[0_0_20px_rgba(0,243,255,0.3)]
                             `}
-                        >
-                            {isAssetsReady ? 'ENTER STUDIO' : 'LOADING...'}
-                        </button>
-                    </div>
-                )}
+            >
+              {isAssetsReady ? "ENTER STUDIO" : "LOADING..."}
+            </button>
+          </div>
+        )}
 
-                {/* --- MENU STATE --- */}
-                {status === GameStatus.MENU && (
-                    <div className="flex flex-col items-center gap-4 md:gap-8 animate-pop w-full max-w-sm md:max-w-none">
-                        <div className="text-center mt-8 md:mt-20">
-                            <h1 className="text-4xl md:text-6xl lg:text-8xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] drop-shadow-[0_0_10px_rgba(0,243,255,0.4)] md:drop-shadow-[0_0_15px_rgba(0,243,255,0.5)]">
-                                NEON RHYTHM
-                            </h1>
-                            <p className="text-[#00f3ff] tracking-[0.2em] md:tracking-[0.3em] font-bold text-xs md:text-sm mt-1 md:mt-2">GESTURE BATTLE</p>
-                        </div>
+        {/* --- MENU STATE --- */}
+        {status === GameStatus.MENU && (
+          <div className="flex flex-col items-center gap-4 md:gap-8 animate-pop w-full max-w-sm md:max-w-none">
+            <div className="text-center mt-8 md:mt-20">
+              <h1 className="text-4xl md:text-6xl lg:text-8xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] drop-shadow-[0_0_10px_rgba(0,243,255,0.4)] md:drop-shadow-[0_0_15px_rgba(0,243,255,0.5)]">
+                NEON RHYTHM
+              </h1>
+              <p className="text-[#00f3ff] tracking-[0.2em] md:tracking-[0.3em] font-bold text-xs md:text-sm mt-1 md:mt-2">
+                GESTURE BATTLE
+              </p>
+            </div>
 
-                        {/* Difficulty Selector - Improved Styling */}
-                        <div className="flex flex-col gap-3 md:gap-4 w-full max-w-sm items-center px-2">
-                            <div className="text-[10px] md:text-xs font-bold text-white/40 tracking-[0.15em] md:tracking-[0.2em] uppercase mb-2 md:mb-3 text-center">
-                                CHOOSE YOUR DIFFICULTY
-                            </div>
-                            {(Object.keys(DIFFICULTIES) as Difficulty[]).map((d) => (
-                                <button
-                                    key={d}
-                                    onClick={() => setDifficulty(d)}
-                                    className={`
+            {/* Difficulty Selector - Improved Styling */}
+            <div className="flex flex-col gap-3 md:gap-4 w-full max-w-sm items-center px-2">
+              <div className="text-[10px] md:text-xs font-bold text-white/40 tracking-[0.15em] md:tracking-[0.2em] uppercase mb-2 md:mb-3 text-center">
+                CHOOSE YOUR DIFFICULTY
+              </div>
+              {(Object.keys(DIFFICULTIES) as Difficulty[]).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setDifficulty(d)}
+                  className={`
                                         w-full py-3 md:py-4 rounded-full text-xs md:text-sm font-black tracking-[0.15em] md:tracking-[0.2em] uppercase transition-all duration-300 border min-h-[44px] touch-manipulation active:scale-95
-                                        ${difficulty === d 
-                                            ? `bg-white/10 ${DIFFICULTIES[d].color} border-white/50 scale-105 shadow-[0_0_20px_rgba(255,255,255,0.15)]` 
-                                            : 'bg-black/60 border-white/20 text-white/30 active:bg-white/5 active:text-white/80 active:scale-[0.98]'
+                                        ${
+                                          difficulty === d
+                                            ? `bg-white/10 ${DIFFICULTIES[d].color} border-white/50 scale-105 shadow-[0_0_20px_rgba(255,255,255,0.15)]`
+                                            : "bg-black/60 border-white/20 text-white/30 active:bg-white/5 active:text-white/80 active:scale-[0.98]"
                                         }
                                     `}
-                                >
-                                    {DIFFICULTIES[d].name}
-                                </button>
-                            ))}
-                            <p className="text-[9px] md:text-[10px] uppercase font-mono text-white/30 mt-2 md:mt-4 tracking-wider md:tracking-widest">
-                                {DIFFICULTIES[difficulty].length} ROUNDS • {DIFFICULTIES[difficulty].bpm} BPM
-                            </p>
-                        </div>
-
-                        {!isCameraReady ? (
-                            <div className="text-yellow-400 animate-pulse text-xs md:text-sm">Initializing Camera...</div>
-                        ) : (
-                            <button
-                                onClick={startGame}
-                                className="group relative px-6 md:px-10 py-4 md:py-5 rounded-full bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] text-black font-black text-base md:text-xl italic tracking-wider md:tracking-widest active:scale-95 md:hover:scale-105 transition-transform shadow-[0_0_20px_rgba(0,243,255,0.3)] md:shadow-[0_0_30px_rgba(0,243,255,0.4)] min-h-[44px] touch-manipulation"
-                            >
-                                START GROOVE
-                            </button>
-                        )}
-                    </div>
-                )}
-
-                {/* --- PLAYING STATE --- */}
-                {(status === GameStatus.PLAYING || status === GameStatus.ANALYZING) && (
-                    <div className="w-full h-full flex flex-col justify-between py-6 md:py-12">
-                        {/* Status (Left) */}
-                        <div className="absolute top-4 left-4 md:top-8 md:left-8">
-                            <div className="glass-panel px-3 py-1.5 md:px-4 md:py-2 rounded-full flex items-center gap-1.5 md:gap-2">
-                                <div className="w-2 h-2 md:w-3 md:h-3 rounded-full bg-green-400 animate-pulse" />
-                                <span className="text-[10px] md:text-xs font-bold tracking-wider md:tracking-widest">LIVE FEED</span>
-                            </div>
-                        </div>
-
-                        {/* Center Stage - Countdown Above, Glass Bar Below */}
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-full z-40 pointer-events-none">
-                            
-                            {/* Countdown - Massive and centered */}
-                            {countdown !== null && (
-                                <div className="text-[8rem] md:text-[12rem] lg:text-[16rem] leading-none font-black italic text-transparent bg-clip-text bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] drop-shadow-[0_3px_3px_rgba(0,0,0,0.8)] md:drop-shadow-[0_5px_5px_rgba(0,0,0,1)] animate-pulse mb-6 md:mb-12 -translate-y-16 md:-translate-y-32 z-50">
-                                    {countdown}
-                                </div>
-                            )}
-
-                            {/* Active Sequence - Visible during PLAYING (including countdown) */}
-                            {status === GameStatus.PLAYING && (
-                                <div className="flex flex-col items-center animate-pop">
-                                    
-                                    {/* Glass Bar UI - Frosted glass effect */}
-                                    <div className="px-3 py-2 md:px-6 md:py-3 rounded-xl md:rounded-2xl flex flex-wrap justify-center items-center gap-1.5 md:gap-2 max-w-[95vw] bg-white/10 backdrop-blur-md border border-white/10 shadow-[0_0_20px_rgba(0,0,0,0.2)] md:shadow-[0_0_30px_rgba(0,0,0,0.3)]">
-                                        {sequence.map((num, idx) => {
-                                            const isPast = idx < currentBeat;
-                                            const isCurrent = idx === currentBeat;
-                                            const result = localResults[idx];
-                                            
-                                            // During countdown, show all numbers dimmed
-                                            let textClass = 'text-white/30 font-black text-2xl md:text-4xl transition-all duration-200';
-                                            let containerClass = 'w-8 h-10 md:w-12 md:h-16 flex justify-center items-center transform transition-all duration-200';
-
-                                            if (countdown === null) {
-                                                // Game started - show dynamic states
-                                                if (result === true) {
-                                                    textClass = 'text-[#00f3ff] text-glow font-black text-2xl md:text-4xl';
-                                                    containerClass += ' scale-100';
-                                                } else if (result === false) {
-                                                    textClass = 'text-[#ff00ff] text-glow-pink font-black text-2xl md:text-4xl opacity-50';
-                                                    containerClass += ' scale-90';
-                                                } else if (isCurrent) {
-                                                    textClass = 'text-white text-glow font-black text-4xl md:text-6xl drop-shadow-[0_0_10px_rgba(255,255,255,0.6)] md:drop-shadow-[0_0_15px_rgba(255,255,255,0.8)]';
-                                                    containerClass += ' scale-110 -translate-y-1 md:-translate-y-1.5 z-10';
-                                                }
-                                            } else {
-                                                // During countdown - show all numbers in white/40 with subtle pulse
-                                                textClass = 'text-white/40 font-black text-2xl md:text-4xl animate-pulse';
-                                            }
-
-                                            return (
-                                                <div key={idx} className={containerClass}>
-                                                    <span className={textClass}>
-                                                        {num}
-                                                    </span>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    
-                                    {/* BPM Indicator - Centered below glass bar */}
-                                    <div className="mt-2 md:mt-4 flex items-center justify-center gap-2 md:gap-4">
-                                         <div className="h-px w-16 md:w-24 bg-gray-800 rounded-full overflow-hidden mx-auto">
-                                            <div className="h-full bg-[#00f3ff] w-0"></div>
-                                         </div>
-                                    </div>
-                                    <p className="text-[9px] md:text-[10px] font-mono text-[#00f3ff]/80 tracking-wider md:tracking-widest mt-0.5 md:mt-1">
-                                        {DIFFICULTIES[difficulty].bpm} BPM
-                                    </p>
-
-                                </div>
-                            )}
-
-                            {/* Robot Analysis */}
-                            {status === GameStatus.ANALYZING && (
-                                <div className="flex flex-col items-center gap-4 md:gap-6 animate-pop px-4">
-                                    <Robot state="analyzing" />
-                                    <h2 className="text-2xl md:text-4xl font-black uppercase text-glow animate-pulse">ANALYZING...</h2>
-                                    <p className="text-white/60 text-xs md:text-sm text-center">The AI Judge is watching your moves</p>
-                                </div>
-                            )}
-                        </div>
-
-                    </div>
-                )}
-
-                {/* --- RESULT STATE --- */}
-                {status === GameStatus.RESULT && resultData && (
-                    <div className="flex flex-col items-center gap-4 md:gap-6 w-full max-w-4xl animate-pop px-3 md:px-4 overflow-y-auto pb-4">
-                        <Robot state={robotState} />
-                        
-                        <h1 className={`text-5xl md:text-7xl lg:text-9xl font-black ${resultData.success ? 'text-[#00f3ff] text-glow' : 'text-[#ff00ff] text-glow-pink'} animate-pop`}>
-                            {resultData.correct_count} / {sequence.length}
-                        </h1>
-
-                        {/* Detailed Results Panel */}
-                        <div className="glass-panel p-4 md:p-6 rounded-2xl md:rounded-3xl bg-white/5 backdrop-blur-md border border-white/10 w-full">
-                            <div className="text-left text-[10px] md:text-xs uppercase font-bold text-white/50 mb-3 md:mb-4 tracking-wider md:tracking-widest">
-                                VERDICT
-                            </div>
-                            
-                            {/* Grid of Results */}
-                            <div className="flex gap-1.5 md:gap-2 mb-4 md:mb-6 justify-center flex-wrap">
-                                {sequence.map((target, idx) => {
-                                    const isHit = resultData.detailed_results[idx];
-                                    const detected = resultData.detected_counts[idx];
-                                    const colorClass = isHit 
-                                        ? 'border-[#00f3ff] bg-[#00f3ff]/20 shadow-[0_0_10px_#00f3ff] md:shadow-[0_0_15px_#00f3ff]' 
-                                        : 'border-[#ff00ff] bg-[#ff00ff]/10';
-                                    const textClass = isHit ? 'text-[#00f3ff]' : 'text-[#ff00ff]';
-                                    const label = isHit ? 'HIT' : 'MISS';
-                                    
-                                    return (
-                                        <div key={idx} className={`w-12 h-16 md:w-16 md:h-24 border-2 ${colorClass} rounded-lg md:rounded-xl flex flex-col items-center justify-center backdrop-blur-sm transform transition-all active:scale-95 md:hover:scale-110`}>
-                                            <span className={`text-2xl md:text-4xl font-black ${textClass} mb-0.5 md:mb-1`}>
-                                                {target}
-                                            </span>
-                                            <span className={`text-[9px] md:text-xs uppercase font-black tracking-wider ${textClass}`}>
-                                                {label}
-                                            </span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            {/* AI Feedback Quote */}
-                            <div className="text-base md:text-xl italic mb-3 md:mb-4 text-center px-2">
-                                "{resultData.feedback}"
-                            </div>
-
-                            {/* Captured Frames Grid */}
-                            <div className="flex gap-1.5 md:gap-2 justify-center flex-wrap mt-3 md:mt-4">
-                                {capturedFrames.map((frame, idx) => {
-                                    const isHit = resultData.detailed_results[idx];
-                                    const borderColor = isHit ? 'border-[#00f3ff] shadow-[0_0_8px_#00f3ff] md:shadow-[0_0_10px_#00f3ff]' : 'border-[#ff00ff]/50';
-                                    const badgeColor = isHit ? 'bg-[#00f3ff]' : 'bg-[#ff00ff]';
-                                    const detected = resultData.detected_counts[idx] ?? '?';
-                                    
-                                    return (
-                                        <div key={idx} className={`relative w-16 h-20 md:w-20 md:h-28 rounded-md md:rounded-lg overflow-hidden border-2 ${borderColor} bg-black/50 active:scale-125 md:hover:scale-150 active:z-50 md:hover:z-50 transition-transform origin-bottom duration-300 group touch-manipulation`}>
-                                            <img src={frame} alt={`frame ${idx + 1}`} className="w-full h-full object-cover opacity-80 group-hover:opacity-100" />
-                                            <div className="absolute top-0.5 right-0.5 md:top-1 md:right-1 bg-black/40 backdrop-blur-sm rounded text-[7px] md:text-[8px] text-white/50 px-1 md:px-1.5 py-0.5 font-mono border border-white/10">
-                                                #{idx + 1}
-                                            </div>
-                                            <div className={`absolute bottom-0 w-full ${badgeColor} py-0.5 md:py-1 flex justify-center shadow-[0_-2px_8px_rgba(0,0,0,0.2)] md:shadow-[0_-2px_10px_rgba(0,0,0,0.3)]`}>
-                                                <span className="text-[8px] md:text-[10px] font-bold text-white uppercase tracking-wider">
-                                                    SAW: {detected}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="flex gap-6 md:gap-8 mt-3 md:mt-4">
-                            <button 
-                                onClick={startGame}
-                                className="text-white/40 text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] active:text-white md:hover:text-white transition-colors border-b border-white/0 active:border-white/50 md:hover:border-white/50 pb-1 min-h-[44px] touch-manipulation"
-                            >
-                                Try Again
-                            </button>
-                            <button 
-                                onClick={() => setStatus(GameStatus.MENU)}
-                                className="text-white/40 text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] active:text-white md:hover:text-white transition-colors border-b border-white/0 active:border-white/50 md:hover:border-white/50 pb-1 min-h-[44px] touch-manipulation"
-                            >
-                                Back to Menu
-                            </button>
-                        </div>
-                    </div>
-                )}
-
+                >
+                  {DIFFICULTIES[d].name}
+                </button>
+              ))}
+              <p className="text-[9px] md:text-[10px] uppercase font-mono text-white/30 mt-2 md:mt-4 tracking-wider md:tracking-widest">
+                {DIFFICULTIES[difficulty].length} ROUNDS •{" "}
+                {DIFFICULTIES[difficulty].bpm} BPM
+              </p>
             </div>
-        </div>
-    );
+
+            {!isCameraReady ? (
+              <div className="text-yellow-400 animate-pulse text-xs md:text-sm">
+                Initializing Camera...
+              </div>
+            ) : (
+              <button
+                onClick={startGame}
+                className="group relative px-6 md:px-10 py-4 md:py-5 rounded-full bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] text-black font-black text-base md:text-xl italic tracking-wider md:tracking-widest active:scale-95 md:hover:scale-105 transition-transform shadow-[0_0_20px_rgba(0,243,255,0.3)] md:shadow-[0_0_30px_rgba(0,243,255,0.4)] min-h-[44px] touch-manipulation"
+              >
+                START GROOVE
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* --- PLAYING STATE --- */}
+        {(status === GameStatus.PLAYING || status === GameStatus.ANALYZING) && (
+          <div className="w-full h-full flex flex-col justify-between py-6 md:py-12">
+            {/* Status (Left) */}
+            <div className="absolute top-4 left-4 md:top-8 md:left-8">
+              <div className="glass-panel px-3 py-1.5 md:px-4 md:py-2 rounded-full flex items-center gap-1.5 md:gap-2">
+                <div className="w-2 h-2 md:w-3 md:h-3 rounded-full bg-green-400 animate-pulse" />
+                <span className="text-[10px] md:text-xs font-bold tracking-wider md:tracking-widest">
+                  LIVE FEED
+                </span>
+              </div>
+            </div>
+
+            {/* Center Stage - Countdown Above, Glass Bar Below */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-full z-40 pointer-events-none">
+              {/* Countdown - Massive and centered */}
+              {countdown !== null && (
+                <div className="text-[8rem] md:text-[12rem] lg:text-[16rem] leading-none font-black italic text-transparent bg-clip-text bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] drop-shadow-[0_3px_3px_rgba(0,0,0,0.8)] md:drop-shadow-[0_5px_5px_rgba(0,0,0,1)] animate-pulse mb-6 md:mb-12 -translate-y-16 md:-translate-y-32 z-50">
+                  {countdown}
+                </div>
+              )}
+
+              {/* Active Sequence - Visible during PLAYING (including countdown) */}
+              {status === GameStatus.PLAYING && (
+                <div className="flex flex-col items-center animate-pop">
+                  {/* Glass Bar UI - Frosted glass effect */}
+                  <div className="px-3 py-2 md:px-6 md:py-3 rounded-xl md:rounded-2xl flex flex-wrap justify-center items-center gap-1.5 md:gap-2 max-w-[95vw] bg-white/10 backdrop-blur-md border border-white/10 shadow-[0_0_20px_rgba(0,0,0,0.2)] md:shadow-[0_0_30px_rgba(0,0,0,0.3)]">
+                    {sequence.map((num, idx) => {
+                      const isPast = idx < currentBeat;
+                      const isCurrent = idx === currentBeat;
+                      const result = localResults[idx];
+
+                      // During countdown, show all numbers dimmed
+                      let textClass =
+                        "text-white/30 font-black text-2xl md:text-4xl transition-all duration-200";
+                      let containerClass =
+                        "w-8 h-10 md:w-12 md:h-16 flex justify-center items-center transform transition-all duration-200";
+
+                      if (countdown === null) {
+                        // Game started - show dynamic states
+                        if (result === true) {
+                          textClass =
+                            "text-[#00f3ff] text-glow font-black text-2xl md:text-4xl";
+                          containerClass += " scale-100";
+                        } else if (result === false) {
+                          textClass =
+                            "text-[#ff00ff] text-glow-pink font-black text-2xl md:text-4xl opacity-50";
+                          containerClass += " scale-90";
+                        } else if (isCurrent) {
+                          textClass =
+                            "text-white text-glow font-black text-4xl md:text-6xl drop-shadow-[0_0_10px_rgba(255,255,255,0.6)] md:drop-shadow-[0_0_15px_rgba(255,255,255,0.8)]";
+                          containerClass +=
+                            " scale-110 -translate-y-1 md:-translate-y-1.5 z-10";
+                        }
+                      } else {
+                        // During countdown - show all numbers in white/40 with subtle pulse
+                        textClass =
+                          "text-white/40 font-black text-2xl md:text-4xl animate-pulse";
+                      }
+
+                      return (
+                        <div key={idx} className={containerClass}>
+                          <span className={textClass}>{num}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* BPM Indicator - Centered below glass bar */}
+                  <div className="mt-2 md:mt-4 flex items-center justify-center gap-2 md:gap-4">
+                    <div className="h-px w-16 md:w-24 bg-gray-800 rounded-full overflow-hidden mx-auto">
+                      <div className="h-full bg-[#00f3ff] w-0"></div>
+                    </div>
+                  </div>
+                  <p className="text-[9px] md:text-[10px] font-mono text-[#00f3ff]/80 tracking-wider md:tracking-widest mt-0.5 md:mt-1">
+                    {DIFFICULTIES[difficulty].bpm} BPM
+                  </p>
+                </div>
+              )}
+
+              {/* Robot Analysis */}
+              {status === GameStatus.ANALYZING && (
+                <div className="flex flex-col items-center gap-4 md:gap-6 animate-pop px-4">
+                  <Robot state="analyzing" />
+                  <h2 className="text-2xl md:text-4xl font-black uppercase text-glow animate-pulse">
+                    ANALYZING...
+                  </h2>
+                  <p className="text-white/60 text-xs md:text-sm text-center">
+                    The AI Judge is watching your moves
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* --- RESULT STATE --- */}
+        {status === GameStatus.RESULT && resultData && (
+          <div className="flex flex-col items-center gap-4 md:gap-6 w-full max-w-4xl animate-pop px-3 md:px-4 overflow-y-auto pb-4">
+            <Robot state={robotState} />
+
+            <h1
+              className={`text-5xl md:text-7xl lg:text-9xl font-black ${
+                resultData.success
+                  ? "text-[#00f3ff] text-glow"
+                  : "text-[#ff00ff] text-glow-pink"
+              } animate-pop`}
+            >
+              {resultData.correct_count} / {sequence.length}
+            </h1>
+
+            {/* Detailed Results Panel */}
+            <div className="glass-panel p-4 md:p-6 rounded-2xl md:rounded-3xl bg-white/5 backdrop-blur-md border border-white/10 w-full">
+              <div className="text-left text-[10px] md:text-xs uppercase font-bold text-white/50 mb-3 md:mb-4 tracking-wider md:tracking-widest">
+                VERDICT
+              </div>
+
+              {/* Grid of Results */}
+              <div className="flex gap-1.5 md:gap-2 mb-4 md:mb-6 justify-center flex-wrap">
+                {sequence.map((target, idx) => {
+                  const isHit = resultData.detailed_results[idx];
+                  const detected = resultData.detected_counts[idx];
+                  const colorClass = isHit
+                    ? "border-[#00f3ff] bg-[#00f3ff]/20 shadow-[0_0_10px_#00f3ff] md:shadow-[0_0_15px_#00f3ff]"
+                    : "border-[#ff00ff] bg-[#ff00ff]/10";
+                  const textClass = isHit ? "text-[#00f3ff]" : "text-[#ff00ff]";
+                  const label = isHit ? "HIT" : "MISS";
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`w-12 h-16 md:w-16 md:h-24 border-2 ${colorClass} rounded-lg md:rounded-xl flex flex-col items-center justify-center backdrop-blur-sm transform transition-all active:scale-95 md:hover:scale-110`}
+                    >
+                      <span
+                        className={`text-2xl md:text-4xl font-black ${textClass} mb-0.5 md:mb-1`}
+                      >
+                        {target}
+                      </span>
+                      <span
+                        className={`text-[9px] md:text-xs uppercase font-black tracking-wider ${textClass}`}
+                      >
+                        {label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* AI Feedback Quote */}
+              <div className="text-base md:text-xl italic mb-3 md:mb-4 text-center px-2">
+                "{resultData.feedback}"
+              </div>
+
+              {/* Captured Frames Grid */}
+              <div className="flex gap-1.5 md:gap-2 justify-center flex-wrap mt-3 md:mt-4">
+                {capturedFrames.map((frame, idx) => {
+                  const isHit = resultData.detailed_results[idx];
+                  const borderColor = isHit
+                    ? "border-[#00f3ff] shadow-[0_0_8px_#00f3ff] md:shadow-[0_0_10px_#00f3ff]"
+                    : "border-[#ff00ff]/50";
+                  const badgeColor = isHit ? "bg-[#00f3ff]" : "bg-[#ff00ff]";
+                  const detected = resultData.detected_counts[idx] ?? "?";
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`relative w-16 h-20 md:w-20 md:h-28 rounded-md md:rounded-lg overflow-hidden border-2 ${borderColor} bg-black/50 active:scale-125 md:hover:scale-150 active:z-50 md:hover:z-50 transition-transform origin-bottom duration-300 group touch-manipulation`}
+                    >
+                      <img
+                        src={frame}
+                        alt={`frame ${idx + 1}`}
+                        className="w-full h-full object-cover opacity-80 group-hover:opacity-100"
+                      />
+                      <div className="absolute top-0.5 right-0.5 md:top-1 md:right-1 bg-black/40 backdrop-blur-sm rounded text-[7px] md:text-[8px] text-white/50 px-1 md:px-1.5 py-0.5 font-mono border border-white/10">
+                        #{idx + 1}
+                      </div>
+                      <div
+                        className={`absolute bottom-0 w-full ${badgeColor} py-0.5 md:py-1 flex justify-center shadow-[0_-2px_8px_rgba(0,0,0,0.2)] md:shadow-[0_-2px_10px_rgba(0,0,0,0.3)]`}
+                      >
+                        <span className="text-[8px] md:text-[10px] font-bold text-white uppercase tracking-wider">
+                          SAW: {detected}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-6 md:gap-8 mt-3 md:mt-4">
+              <button
+                onClick={startGame}
+                className="text-white/40 text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] active:text-white md:hover:text-white transition-colors border-b border-white/0 active:border-white/50 md:hover:border-white/50 pb-1 min-h-[44px] touch-manipulation"
+              >
+                Try Again
+              </button>
+              <button
+                onClick={() => setStatus(GameStatus.MENU)}
+                className="text-white/40 text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] active:text-white md:hover:text-white transition-colors border-b border-white/0 active:border-white/50 md:hover:border-white/50 pb-1 min-h-[44px] touch-manipulation"
+              >
+                Back to Menu
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 export default App;
