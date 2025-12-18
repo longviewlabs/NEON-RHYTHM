@@ -500,22 +500,38 @@ const App: React.FC = () => {
       // Show first beat immediately when sequence starts
       setCurrentBeat(0);
 
+      const captureFrame = () => {
+        if (videoRef.current && canvasRef.current) {
+          const canvas = canvasRef.current;
+          const video = videoRef.current;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, 320, 240);
+            return canvas.toDataURL("image/jpeg", 0.5);
+          }
+        }
+        return null;
+      };
+
+      // Trigger bursts for a specific beat
+      const triggerBurst = (beatIdx: number) => {
+        const offsets = [0.25, 0.5, 0.75];
+        offsets.forEach((offset) => {
+          const timerId = setTimeout(() => {
+            const frame = captureFrame();
+            if (frame) frames.push(frame);
+          }, interval * offset);
+          gameTimersRef.current.push(timerId);
+        });
+      };
+
+      // Initial burst for first beat
+      triggerBurst(0);
+
       // Use consistent interval from the start - first callback happens after one interval
       const loopId = setInterval(() => {
         // JUDGE THE PREVIOUS BEAT (The one we just finished showing)
         if (beat >= 0 && beat < seq.length) {
-          // ... (frame capture remains same) ...
-          if (videoRef.current && canvasRef.current) {
-            const canvas = canvasRef.current;
-            const video = videoRef.current;
-            const ctx = canvas.getContext("2d");
-            if (ctx) {
-              // Draw at the fixed small size to save memory and CPU
-              ctx.drawImage(video, 0, 0, 320, 240);
-              frames.push(canvas.toDataURL("image/jpeg", 0.5)); // 50% quality is plenty
-            }
-          }
-
           // JUDGMENT: Use the "hasHit" flag which caught the gesture at any point in the beat
           const isHit = hasHitCurrentBeatRef.current;
           results[beat] = isHit;
@@ -532,15 +548,18 @@ const App: React.FC = () => {
         // Check if we've shown all beats
         if (beat >= seq.length) {
           clearInterval(loopId);
-          // Last beat was already judged and captured in the loop above
-          // Music transition handled by state change to ANALYZING/RESULT
-          setCapturedFrames(frames);
-          analyzeGame(seq, frames, results);
+          // Small delay to ensure the last burst capture ('After') is finished
+          const finishTimer = setTimeout(() => {
+            setCapturedFrames(frames);
+            analyzeGame(seq, frames, results);
+          }, interval * 0.8);
+          gameTimersRef.current.push(finishTimer);
           return;
         }
 
-        // Show current beat
+        // Show current beat and trigger its burst
         setCurrentBeat(beat);
+        triggerBurst(beat);
       }, interval);
       gameTimersRef.current.push(loopId);
     };
@@ -583,14 +602,14 @@ const App: React.FC = () => {
                 You are a judge for a rhythm game.
                 The player had to show a specific number of fingers for each beat.
                 Target Sequence: [${seq.join(", ")}].
-                I have provided ${
-                  frames.length
-                } images, one captured for each beat.
+                I have provided ${frames.length} images.
+                CRITICAL: For each beat in the target sequence, there are 3 snapshots (Before, During, and After).
+                Total beats: ${seq.length}. Total images: ${frames.length}.
                 
                 YOUR TASK:
-                1. Count the extended fingers in each image. (0 for fist).
-                2. Compare with the Target Sequence.
-                3. Provide a strict judgment.
+                1. For each beat, evaluate the 3 snapshots provided.
+                2. If AT LEAST ONE of the 3 images in the group correctly shows the target number of fingers, count that beat as a SUCCESS.
+                3. Be strict but fair - if the player was caught transitioning (flickering), but managed to show the correct number in at least one snapshot, give them the point.
                 
                 Return JSON:
                 {
@@ -599,7 +618,7 @@ const App: React.FC = () => {
                     "score": number (0-100),
                     "feedback": "Short witty comment (max 10 words)",
                     "detailed_results": [boolean array matching sequence length],
-                    "detected_counts": [number array matching detected fingers]
+                    "detected_counts": [number array matching EVERY INDIVIDUAL frame provided]
                 }
             `;
 
@@ -939,32 +958,51 @@ const App: React.FC = () => {
               </div>
 
               {/* Captured Frames Grid */}
-              <div className="flex gap-1.5 md:gap-2 justify-center flex-wrap mt-3 md:mt-4">
-                {capturedFrames.map((frame, idx) => {
-                  const isHit = resultData.detailed_results[idx];
-                  const borderColor = isHit
-                    ? "border-[#00f3ff] shadow-[0_0_8px_#00f3ff] md:shadow-[0_0_10px_#00f3ff]"
+              <div className="flex gap-2 md:gap-4 justify-center flex-wrap mt-3 md:mt-4">
+                {sequence.map((targetCount, beatIdx) => {
+                  const startIndex = beatIdx * 3;
+                  const indices = [startIndex, startIndex + 1, startIndex + 2];
+
+                  // Pick the first correct match, or fallback to the middle frame
+                  let displayIdx = indices.find(
+                    (idx) => resultData.detected_counts[idx] === targetCount
+                  );
+                  if (displayIdx === undefined) displayIdx = startIndex + 1;
+
+                  const frame = capturedFrames[displayIdx];
+                  const detected =
+                    resultData.detected_counts[displayIdx] ?? "?";
+                  const isCorrectMatch = detected === targetCount;
+                  const isHit = resultData.detailed_results[beatIdx];
+
+                  let borderColor = isHit
+                    ? "border-[#00f3ff] shadow-[0_0_10px_#00f3ff]"
                     : "border-[#ff00ff]/50";
-                  const badgeColor = isHit ? "bg-[#00f3ff]" : "bg-[#ff00ff]";
-                  const detected = resultData.detected_counts[idx] ?? "?";
+
+                  const badgeColor = isCorrectMatch
+                    ? "bg-[#00f3ff]"
+                    : "bg-[#ff00ff]";
 
                   return (
                     <div
-                      key={idx}
-                      className={`relative w-16 h-20 md:w-20 md:h-28 rounded-md md:rounded-lg overflow-hidden border-2 ${borderColor} bg-black/50 active:scale-125 md:hover:scale-150 active:z-50 md:hover:z-50 transition-transform origin-bottom duration-300 group touch-manipulation`}
+                      key={beatIdx}
+                      className={`relative w-24 h-32 md:w-32 md:h-44 rounded-lg md:rounded-xl overflow-hidden border-2 transition-all ${borderColor} bg-black/50 active:scale-110 md:hover:scale-110 origin-bottom duration-300 group touch-manipulation`}
                     >
                       <img
                         src={frame}
-                        alt={`frame ${idx + 1}`}
-                        className="w-full h-full object-cover opacity-80 group-hover:opacity-100"
+                        alt={`beat ${beatIdx + 1}`}
+                        className="w-full h-full object-cover opacity-90 group-hover:opacity-100"
                       />
-                      <div className="absolute top-0.5 right-0.5 md:top-1 md:right-1 bg-black/40 backdrop-blur-sm rounded text-[7px] md:text-[8px] text-white/50 px-1 md:px-1.5 py-0.5 font-mono border border-white/10">
-                        #{idx + 1}
+                      <div className="absolute top-1 right-1 bg-black/40 backdrop-blur-sm rounded text-[8px] md:text-[10px] text-white/50 px-1.5 py-0.5 font-mono border border-white/10">
+                        BEAT {beatIdx + 1}
                       </div>
                       <div
-                        className={`absolute bottom-0 w-full ${badgeColor} py-0.5 md:py-1 flex justify-center shadow-[0_-2px_8px_rgba(0,0,0,0.2)] md:shadow-[0_-2px_10px_rgba(0,0,0,0.3)]`}
+                        className={`absolute bottom-0 w-full ${badgeColor} py-1 flex flex-col items-center shadow-[0_-2px_10px_rgba(0,0,0,0.3)]`}
                       >
-                        <span className="text-[8px] md:text-[10px] font-bold text-white uppercase tracking-wider">
+                        <span className="text-[10px] md:text-xs font-black text-white uppercase tracking-tighter">
+                          TAR: {targetCount}
+                        </span>
+                        <span className="text-[8px] md:text-[10px] font-bold text-white/90 uppercase tracking-wider">
                           SAW: {detected}
                         </span>
                       </div>
