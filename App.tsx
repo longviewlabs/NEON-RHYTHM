@@ -717,7 +717,7 @@ const App: React.FC = () => {
       <video
         ref={videoRef}
         className="absolute inset-0 w-full h-full object-cover opacity-30 scale-x-[-1]"
-        style={{ opacity: 0.01 }}
+        // style={{ opacity: 0.01 }}
         playsInline
         muted
         autoPlay
@@ -759,10 +759,10 @@ const App: React.FC = () => {
         status !== GameStatus.RESULT &&
         status !== GameStatus.LOADING && (
           <div className="absolute top-4 md:top-8 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center pointer-events-none">
-            <div className="text-[10px] md:text-[12px] text-[#00f3ff] tracking-[0.2em] md:tracking-[0.3em] font-bold mb-0.5 md:mb-1 uppercase text-glow">
-              Finger Count
+            <div className="text-[14px] md:text-[18px] text-white font-bold mb-0.5 md:mb-1 drop-shadow-[0_2px_2px_rgba(0,0,0,1)] text-center w-max">
+              Only 1% people can do this...
             </div>
-            <div className="text-5xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-[#00f3ff] drop-shadow-[0_0_15px_rgba(0,243,255,0.6)] md:drop-shadow-[0_0_20px_rgba(0,243,255,0.8)]">
+            <div className="text-6xl md:text-9xl font-black text-white drop-shadow-[0_4px_4px_rgba(0,0,0,1)]">
               {fingerCount}
             </div>
           </div>
@@ -788,16 +788,15 @@ const App: React.FC = () => {
               onClick={handleEnterStudio}
               disabled={!isAssetsReady}
               className={`
-                                w-full py-3 md:py-4 rounded-xl text-base md:text-lg font-black uppercase tracking-widest transition-all duration-300
-                                ${
-                                  isAssetsReady
-                                    ? "bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] text-black hover:shadow-[0_0_30px_rgba(255,255,255,0.5)] active:scale-95"
-                                    : "bg-white/10 text-white/30 cursor-not-allowed"
-                                }
-                                shadow-[0_0_20px_rgba(0,243,255,0.3)]
-                            `}
+                w-full py-4 rounded-xl text-lg font-black uppercase tracking-widest transition-all
+                ${
+                  isAssetsReady
+                    ? "bg-white text-black hover:bg-gray-200 active:scale-95"
+                    : "bg-white/10 text-white/30 cursor-not-allowed"
+                }
+              `}
             >
-              {isAssetsReady ? "ENTER STUDIO" : "LOADING..."}
+              {isAssetsReady ? "ENTER" : "LOADING..."}
             </button>
           </div>
         )}
@@ -815,7 +814,7 @@ const App: React.FC = () => {
                   setDifficulty("EASY");
                   startGame("EASY");
                 }}
-                className="group relative px-6 md:px-10 py-4 md:py-5 rounded-full bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] text-black font-black text-base md:text-xl italic tracking-wider md:tracking-widest active:scale-95 md:hover:scale-105 transition-transform shadow-[0_0_20px_rgba(0,243,255,0.3)] md:shadow-[0_0_30px_rgba(0,243,255,0.4)] min-h-[44px] touch-manipulation"
+                className="group relative px-12 py-5 rounded-full bg-white text-black font-black text-2xl tracking-widest active:scale-95 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
               >
                 START
               </button>
@@ -840,66 +839,42 @@ const App: React.FC = () => {
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-full z-40 pointer-events-none">
               {/* Countdown - Massive and centered */}
               {countdown !== null && (
-                <div className="text-[8rem] md:text-[12rem] lg:text-[16rem] leading-none font-black italic text-transparent bg-clip-text bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] drop-shadow-[0_3px_3px_rgba(0,0,0,0.8)] md:drop-shadow-[0_5px_5px_rgba(0,0,0,1)] animate-pulse mb-6 md:mb-12 -translate-y-16 md:-translate-y-32 z-50">
+                <div className="text-[12rem] md:text-[20rem] font-black text-white drop-shadow-[0_10px_10px_rgba(0,0,0,1)] animate-pulse z-50">
                   {countdown}
                 </div>
               )}
 
-              {/* Active Sequence - Visible during PLAYING (including countdown) */}
+              {/* Active Sequence - Simple Text Overlay */}
               {status === GameStatus.PLAYING && (
-                <div className="flex flex-col items-center animate-pop">
-                  {/* Glass Bar UI - Frosted glass effect */}
-                  <div className="px-3 py-2 md:px-6 md:py-3 rounded-xl md:rounded-2xl flex flex-wrap justify-center items-center gap-1.5 md:gap-2 max-w-[95vw] bg-white/10 backdrop-blur-md border border-white/10 shadow-[0_0_20px_rgba(0,0,0,0.2)] md:shadow-[0_0_30px_rgba(0,0,0,0.3)]">
+                <div className="flex flex-col items-center select-none animate-pop mt-20 md:mt-32">
+                  <div className="flex items-center justify-center font-black text-4xl md:text-7xl text-white drop-shadow-[0_4px_4px_rgba(0,0,0,1)] bg-black/20 px-6 py-2 rounded-lg backdrop-blur-sm">
                     {sequence.map((num, idx) => {
-                      const isPast = idx < currentBeat;
                       const isCurrent = idx === currentBeat;
                       const result = localResults[idx];
 
-                      // During countdown, show all numbers dimmed
-                      let textClass =
-                        "text-white/30 font-black text-2xl md:text-4xl transition-all duration-200";
-                      let containerClass =
-                        "w-8 h-10 md:w-12 md:h-16 flex justify-center items-center transform transition-all duration-200";
-
-                      if (countdown === null) {
-                        // Game started - show dynamic states
-                        if (result === true) {
-                          textClass =
-                            "text-[#00f3ff] text-glow font-black text-2xl md:text-4xl";
-                          containerClass += " scale-100";
-                        } else if (result === false) {
-                          textClass =
-                            "text-[#ff00ff] text-glow-pink font-black text-2xl md:text-4xl opacity-50";
-                          containerClass += " scale-90";
-                        } else if (isCurrent) {
-                          textClass =
-                            "text-white text-glow font-black text-4xl md:text-6xl drop-shadow-[0_0_10px_rgba(255,255,255,0.6)] md:drop-shadow-[0_0_15px_rgba(255,255,255,0.8)]";
-                          containerClass +=
-                            " scale-110 -translate-y-1 md:-translate-y-1.5 z-10";
-                        }
+                      let displayClass = "transition-all duration-150";
+                      if (isCurrent) {
+                        displayClass += " text-white scale-125 mx-2";
+                      } else if (result === true) {
+                        displayClass += " text-green-400 opacity-60";
+                      } else if (result === false) {
+                        displayClass += " text-red-500 opacity-60";
                       } else {
-                        // During countdown - show all numbers in white/40 with subtle pulse
-                        textClass =
-                          "text-white/40 font-black text-2xl md:text-4xl animate-pulse";
+                        displayClass += " text-white opacity-40";
                       }
 
                       return (
-                        <div key={idx} className={containerClass}>
-                          <span className={textClass}>{num}</span>
-                        </div>
+                        <React.Fragment key={idx}>
+                          {idx > 0 && (
+                            <span className="mx-0.5 opacity-30 text-white">
+                              -
+                            </span>
+                          )}
+                          <span className={displayClass}>{num}</span>
+                        </React.Fragment>
                       );
                     })}
                   </div>
-
-                  {/* BPM Indicator - Centered below glass bar */}
-                  <div className="mt-2 md:mt-4 flex items-center justify-center gap-2 md:gap-4">
-                    <div className="h-px w-16 md:w-24 bg-gray-800 rounded-full overflow-hidden mx-auto">
-                      <div className="h-full bg-[#00f3ff] w-0"></div>
-                    </div>
-                  </div>
-                  <p className="text-[9px] md:text-[10px] font-mono text-[#00f3ff]/80 tracking-wider md:tracking-widest mt-0.5 md:mt-1">
-                    {DIFFICULTIES[difficulty].bpm} BPM
-                  </p>
                 </div>
               )}
 
@@ -1053,7 +1028,7 @@ const App: React.FC = () => {
                     setStatus(GameStatus.MENU);
                   }
                 }}
-                className="px-10 py-4 bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] rounded-full text-black font-black uppercase tracking-widest text-base hover:scale-105 transition-transform shadow-[0_0_30px_rgba(0,243,255,0.6)] animate-pulse"
+                className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
               >
                 {difficulty === "NIGHTMARE" ? "FINISH" : "NEXT ROUND"}
               </button>
