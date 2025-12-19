@@ -451,8 +451,8 @@ const App: React.FC = () => {
   }, [isMuted]);
 
   // --- GAME LOOP ---
-  const startGame = async (forcedDifficulty?: Difficulty) => {
-    cleanupTempData(); // Clear memory/timers from previous rounds
+  async function startGame(forcedDifficulty?: Difficulty) {
+    cleanupTempData();
 
     const targetDifficulty = forcedDifficulty || difficulty;
     const newSequence = generateSequence(targetDifficulty);
@@ -470,43 +470,26 @@ const App: React.FC = () => {
     setCurrentBeat(-1);
     hasHitCurrentBeatRef.current = false;
 
-    // Calculate timing based on difficulty's playback rate
     const targetBPM = DIFFICULTIES[targetDifficulty].bpm;
     const playbackRate = targetBPM / BASE_BPM;
-
-    // Time until first beat at current playback rate
     const timeToFirstBeat = FIRST_BEAT_TIME_SEC / playbackRate;
-
-    // We have a 3-second countdown, so:
-    // - If first beat is at 3s (at 1x speed), start music immediately
-    // - If first beat takes longer, delay music start
-    // - If first beat comes sooner, start music from an offset
-
-    const countdownDuration = 3; // 3 seconds countdown
+    const countdownDuration = 3;
 
     if (timeToFirstBeat >= countdownDuration) {
-      // First beat comes after countdown - start music now, it will sync
       playTrack("game", 0);
-
-      // Wait for the difference, then start countdown
       const waitTime = (timeToFirstBeat - countdownDuration) * 1000;
       const timerId = setTimeout(() => {
         startCountdown(newSequence);
       }, waitTime);
       gameTimersRef.current.push(timerId);
     } else {
-      // First beat comes before countdown ends - skip intro
-      // Start music from a point so first beat aligns with countdown end
-      const skipAmount = FIRST_BEAT_TIME_SEC; // Skip the intro
+      const skipAmount = FIRST_BEAT_TIME_SEC;
       playTrack("game", skipAmount);
-
-      // Start countdown immediately
       startCountdown(newSequence);
     }
-  };
+  }
 
-  // Separated countdown logic for cleaner code
-  const startCountdown = (newSequence: number[]) => {
+  function startCountdown(newSequence: number[]) {
     let count = 3;
     setCountdown(count);
     playCountdownBeep(count);
@@ -522,46 +505,34 @@ const App: React.FC = () => {
       if (count === 0) {
         clearInterval(timerId);
         setCountdown(null);
-        // Start sequence immediately - synced with first beat!
         runSequence(newSequence);
       }
     }, 1000);
     gameTimersRef.current.push(timerId);
-  };
+  }
 
-  const runSequence = (seq: number[]) => {
-    // playMusic(); // Removed: Handled in startGame now
+  function runSequence(seq: number[]) {
     const bpm = DIFFICULTIES[difficulty].bpm;
     const interval = 60000 / bpm;
-    let beat = 0; // Start at 0
-    const frames: string[] = [];
+    let beat = 0;
     const results: (boolean | null)[] = new Array(seq.length).fill(null);
 
-    // Pre-set canvas size for optimized capture (Low res is enough for AI)
     if (canvasRef.current) {
       canvasRef.current.width = 320;
       canvasRef.current.height = 240;
     }
 
-    // Start the beat loop after audio offset for perfect sync
     const startBeatLoop = () => {
-      // Create groups to store frames chronologically for each beat
       const beatFrameGroups: (string | null)[][] = Array.from(
         { length: seq.length },
         () => [null, null, null]
       );
-
-      // Snapshot offsets per beat: 500ms before, 0ms (on the beat), 500ms after
       const snapshotOffsets = [-500, 0, 500];
 
-      // Schedule ALL snapshots for the entire sequence immediately
       seq.forEach((target, beatIdx) => {
         const beatMoment = beatIdx * interval;
-
         snapshotOffsets.forEach((offsetMs, snapshotIdx) => {
           const delay = beatMoment + offsetMs;
-
-          // Capture frame at the precise moment (using setTimeout from loop start)
           const timerId = setTimeout(() => {
             const frame =
               videoRef.current && canvasRef.current
@@ -579,8 +550,6 @@ const App: React.FC = () => {
 
             if (frame) {
               beatFrameGroups[beatIdx][snapshotIdx] = frame;
-
-              // If this specific beat group is now complete, send to AI
               if (
                 beatFrameGroups[beatIdx].every((f) => f !== null) &&
                 judgementMode === "AI"
@@ -597,16 +566,13 @@ const App: React.FC = () => {
         });
       });
 
-      // Show first beat immediately
       setCurrentBeat(0);
 
       const loopId = setInterval(() => {
-        // JUDGE THE PREVIOUS BEAT (Local fallback logic)
         if (beat >= 0 && beat < seq.length) {
           const isHit = hasHitCurrentBeatRef.current;
           results[beat] = isHit;
           setLocalResults([...results]);
-
           if (isHit) playSuccessSound();
           else playFailSound();
         }
@@ -616,8 +582,7 @@ const App: React.FC = () => {
 
         if (beat >= seq.length) {
           clearInterval(loopId);
-          setCurrentBeat(-1); // Remove active highlight so last beat result color shows
-          // Wait for the absolute last +500ms snapshot plus a tiny safety margin
+          setCurrentBeat(-1);
           const finishTimer = setTimeout(() => {
             const flattened = beatFrameGroups
               .flat()
@@ -628,26 +593,24 @@ const App: React.FC = () => {
           gameTimersRef.current.push(finishTimer);
           return;
         }
-
         setCurrentBeat(beat);
       }, interval);
       gameTimersRef.current.push(loopId);
     };
 
-    // Apply audio offset for sync - if 0, start immediately
     if (AUDIO_OFFSET_MS > 0) {
       const timerId = setTimeout(startBeatLoop, AUDIO_OFFSET_MS);
       gameTimersRef.current.push(timerId);
     } else {
       startBeatLoop();
     }
-  };
+  }
 
-  const analyzeBeat = async (
+  async function analyzeBeat(
     beatIdx: number,
     frames: string[],
     target: number
-  ) => {
+  ) {
     try {
       const ai = getAI(process.env.API_KEY || "");
       const imageParts = frames.map((dataUrl) => ({
@@ -664,7 +627,6 @@ const App: React.FC = () => {
         The 'detected_count' array must have exactly 3 numbers representing what you saw in each snapshot.
       `;
 
-      console.log(`🤖 AI Sending Beat ${beatIdx} (Target: ${target})...`);
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: [{ parts: [{ text: prompt }, ...imageParts] }],
@@ -672,40 +634,27 @@ const App: React.FC = () => {
       });
 
       const data = JSON.parse(response.text);
-      console.log(`✅ AI Received Beat ${beatIdx}:`, data);
-
-      // Ensure counts are numbers and derive success manually for 100% consistency
       const detectedCounts = (data.detected_count || []).map(
         (v: any) => parseInt(v) || 0
       );
       const isSuccess = detectedCounts.some((c: number) => c === target);
 
-      // Update Ref for logic
       aiResultsRef.current[beatIdx] = isSuccess;
       aiDetectedCountsRef.current[beatIdx] = detectedCounts;
-
-      // Update State for UI
       setAiResults([...aiResultsRef.current]);
       setAiDetectedCounts([...aiDetectedCountsRef.current]);
     } catch (e) {
       console.error(`AI Beat ${beatIdx} failed:`, e);
-      // Fail silently, analyzeGame will use local fallback for missing results
     }
-  };
+  }
 
-  const analyzeGame = async (
-    seq: number[],
-    localResults: (boolean | null)[]
-  ) => {
+  async function analyzeGame(seq: number[], localResults: (boolean | null)[]) {
     setStatus(GameStatus.ANALYZING);
-    // playTrack('score'); // Handled by useEffect monitoring status
     setRobotState("analyzing");
 
-    // Calculate local score for fallback
     const localCorrectCount = localResults.filter((r) => r === true).length;
     const localScore = Math.round((localCorrectCount / seq.length) * 100);
 
-    // If LOCAL mode is selected, skip AI analysis and show results immediately
     if (judgementMode === "LOCAL") {
       setRobotState(localScore > 60 ? "happy" : "sad");
       setResultData({
@@ -714,36 +663,34 @@ const App: React.FC = () => {
         score: localScore,
         feedback: "Local Tracking complete. Ultra-fast feedback active!",
         detailed_results: localResults.map((r) => r === true),
-        detected_counts: new Array(seq.length * 3).fill(0), // Placeholder for UI
+        detected_counts: new Array(seq.length * 3).fill(0),
       });
       setStatus(GameStatus.RESULT);
+      if (localScore > 60) {
+        const autoNextTimer = setTimeout(() => handleNextRound(), 3000);
+        gameTimersRef.current.push(autoNextTimer);
+      } else {
+        setDifficulty("EASY");
+      }
       return;
     }
 
     try {
-      // 1. Wait for AT LEAST ONE AI result to finish before showing result screen
-      // This makes the transition feel instant
       let attempts = 0;
       let hasOneResult = false;
-
       while (attempts < 40) {
         const currentCount = aiResultsRef.current.filter(
           (r) => r !== null
         ).length;
-
         if (currentCount > 0 && !hasOneResult) {
           hasOneResult = true;
           setStatus(GameStatus.RESULT);
         }
-
-        // If all are done, finish pooling
         if (currentCount >= seq.length) break;
-
         await new Promise((r) => setTimeout(r, 250));
         attempts++;
       }
 
-      // 2. Aggregate final data from REF once all is settled (or timeout)
       const finalAiResults = aiResultsRef.current.slice(0, seq.length);
       const correct_count = finalAiResults.filter((r) => r === true).length;
       const score = Math.round((correct_count / seq.length) * 100);
@@ -758,9 +705,14 @@ const App: React.FC = () => {
         detected_counts: aiDetectedCountsRef.current.flat(),
       });
       setRobotState(score > 60 ? "happy" : "sad");
+      if (score > 60) {
+        const autoNextTimer = setTimeout(() => handleNextRound(), 3000);
+        gameTimersRef.current.push(autoNextTimer);
+      } else {
+        setDifficulty("EASY");
+      }
     } catch (error) {
-      console.error("Gemini Analysis Failed or Timeout", error);
-      // Fallback to local results
+      console.error("Gemini Analysis Failed", error);
       setRobotState(localScore > 60 ? "happy" : "sad");
       setResultData({
         success: localScore > 60,
@@ -768,11 +720,39 @@ const App: React.FC = () => {
         score: localScore,
         feedback: "AI Offline. Using local judgment.",
         detailed_results: localResults.map((r) => r === true),
-        detected_counts: seq.map(() => 0), // Placeholder
+        detected_counts: seq.map(() => 0),
       });
       setStatus(GameStatus.RESULT);
+      if (localScore > 60) {
+        const autoNextTimer = setTimeout(() => handleNextRound(), 3000);
+        gameTimersRef.current.push(autoNextTimer);
+      } else {
+        setDifficulty("EASY");
+      }
     }
-  };
+  }
+
+  function handleNextRound() {
+    gameTimersRef.current.forEach((id) => {
+      if (id) {
+        clearInterval(id as any);
+        clearTimeout(id as any);
+      }
+    });
+    gameTimersRef.current = [];
+
+    const diffs = Object.keys(DIFFICULTIES) as Difficulty[];
+    const currentIndex = diffs.indexOf(difficulty);
+    const nextDifficulty = diffs[currentIndex + 1];
+
+    if (nextDifficulty) {
+      setDifficulty(nextDifficulty);
+      startGame(nextDifficulty);
+    } else {
+      setDifficulty("EASY");
+      setStatus(GameStatus.MENU);
+    }
+  }
 
   // --- RENDER ---
   const beatDuration = 60 / DIFFICULTIES[difficulty].bpm; // in seconds
@@ -1122,25 +1102,9 @@ const App: React.FC = () => {
             <div className="flex flex-wrap justify-center gap-6 md:gap-8 mt-3 md:mt-4">
               <button
                 onClick={() => {
-                  const diffs = Object.keys(DIFFICULTIES) as Difficulty[];
-                  const currentIndex = diffs.indexOf(difficulty);
-                  const nextDifficulty = diffs[currentIndex + 1];
-
-                  if (nextDifficulty) {
-                    setDifficulty(nextDifficulty);
-                    startGame(nextDifficulty);
-                  } else {
-                    // Reset to beginning when finished
-                    setDifficulty("EASY");
-                    setStatus(GameStatus.MENU);
-                  }
+                  setDifficulty("EASY");
+                  startGame("EASY");
                 }}
-                className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
-              >
-                {difficulty === "NIGHTMARE" ? "FINISH" : "NEXT ROUND"}
-              </button>
-              <button
-                onClick={() => startGame()}
                 className="text-white/40 text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] active:text-white md:hover:text-white transition-colors border-b border-white/0 active:border-white/50 md:hover:border-white/50 pb-1 min-h-[44px] touch-manipulation"
               >
                 Try Again
