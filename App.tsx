@@ -911,15 +911,17 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Center Stage - Countdown Above, Glass Bar Below */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-full z-40 pointer-events-none">
-              {/* Countdown - Massive and centered */}
-              {countdown !== null && (
-                <div className="text-[12rem] md:text-[20rem] font-black text-white drop-shadow-[0_10px_10px_rgba(0,0,0,1)] animate-pulse z-50">
+            {/* Top Center Countdown */}
+            {countdown !== null && (
+              <div className="absolute top-[10%] left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+                <div className="text-[12rem] md:text-[20rem] font-black text-white drop-shadow-[0_10px_10px_rgba(0,0,0,1)] animate-pulse">
                   {countdown}
                 </div>
-              )}
+              </div>
+            )}
 
+            {/* Center Stage - Glass Bar Below */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-full z-40 pointer-events-none">
               {/* Active Sequence - Simple Text Overlay (Matches Reference Image) */}
               {status === GameStatus.PLAYING && (
                 <div className="flex flex-col items-center select-none animate-pop w-full px-4">
