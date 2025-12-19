@@ -616,6 +616,7 @@ const App: React.FC = () => {
 
         if (beat >= seq.length) {
           clearInterval(loopId);
+          setCurrentBeat(-1); // Remove active highlight so last beat result color shows
           // Wait for the absolute last +500ms snapshot plus a tiny safety margin
           const finishTimer = setTimeout(() => {
             const flattened = beatFrameGroups
@@ -785,7 +786,8 @@ const App: React.FC = () => {
       <video
         ref={videoRef}
         className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
-        style={{ opacity: 0 }}
+        // style={{ opacity: 0 }}
+        style={{ opacity: videoOpacity }}
         playsInline
         muted
         autoPlay
