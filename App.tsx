@@ -7,6 +7,7 @@ import React, { useRef, useState, useEffect, useCallback } from "react";
 import { useMediaPipe } from "./hooks/useMediaPipe";
 import Robot from "./components/Robot";
 import WebcamPreview from "./components/WebcamPreview";
+import SettingsModal from "./components/SettingsModal";
 import { GoogleGenAI } from "@google/genai";
 import {
   DIFFICULTIES,
@@ -15,7 +16,7 @@ import {
   RobotState,
   GeminiResponse,
 } from "./types";
-import { RotateCcw, Volume2, VolumeX } from "lucide-react";
+import { RotateCcw, Volume2, VolumeX, Settings } from "lucide-react";
 import {
   MUSIC_INTRO_URL,
   MUSIC_GAME_URL,
@@ -66,6 +67,8 @@ const App: React.FC = () => {
   const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
   const [judgementMode, setJudgementMode] = useState<"LOCAL" | "AI">("AI");
   const [isMuted, setIsMuted] = useState(false);
+  const [showFingerVector, setShowFingerVector] = useState(true);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Loading State
   const [isAssetsReady, setIsAssetsReady] = useState(false);
@@ -723,22 +726,31 @@ const App: React.FC = () => {
         videoRef={videoRef}
         landmarksRef={landmarksRef}
         isCameraReady={isCameraReady}
+        showFingerVector={showFingerVector}
       />
 
       {/* Overlay Gradient */}
       <div className="absolute inset-0 bg-gradient-to-t from-[#050510] via-transparent to-[#050510]/80 pointer-events-none" />
 
-      {/* Mute Button */}
-      <button
-        onClick={() => setIsMuted(!isMuted)}
-        className="absolute top-4 right-4 md:top-6 md:right-6 z-50 p-3 md:p-3 bg-white/10 rounded-full hover:bg-white/20 active:bg-white/30 transition-all pointer-events-auto touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-      >
-        {isMuted ? (
-          <VolumeX size={20} className="md:w-6 md:h-6" />
-        ) : (
-          <Volume2 size={20} className="md:w-6 md:h-6" />
-        )}
-      </button>
+      {/* Top Controls */}
+      <div className="absolute top-4 right-4 md:top-6 md:right-6 z-50 flex gap-2 md:gap-3">
+        <button
+          onClick={() => setIsSettingsOpen(true)}
+          className="p-3 bg-white/10 rounded-full hover:bg-white/20 active:bg-white/30 transition-all pointer-events-auto touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
+        >
+          <Settings size={20} className="md:w-6 md:h-6" />
+        </button>
+        <button
+          onClick={() => setIsMuted(!isMuted)}
+          className="p-3 bg-white/10 rounded-full hover:bg-white/20 active:bg-white/30 transition-all pointer-events-auto touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
+        >
+          {isMuted ? (
+            <VolumeX size={20} className="md:w-6 md:h-6" />
+          ) : (
+            <Volume2 size={20} className="md:w-6 md:h-6" />
+          )}
+        </button>
+      </div>
 
       {/* DETECTED NUMBER - TOP CENTER */}
       {isCameraReady &&
@@ -1097,6 +1109,14 @@ const App: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* MODALS */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        showFingerVector={showFingerVector}
+        setShowFingerVector={setShowFingerVector}
+      />
     </div>
   );
 };
