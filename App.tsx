@@ -58,6 +58,10 @@ const App: React.FC = () => {
   // Ref to track finger count inside intervals/closures
   const fingerCountRef = useRef(0);
 
+  // AI Results Refs (for logic and polling)
+  const aiResultsRef = useRef<(boolean | null)[]>([]);
+  const aiDetectedCountsRef = useRef<number[][]>([]);
+
   // Game State
   const [status, setStatus] = useState<GameStatus>(GameStatus.LOADING);
   const [difficulty, setDifficulty] = useState<Difficulty>("EASY");
@@ -80,6 +84,8 @@ const App: React.FC = () => {
   // Analysis Results (Gemini)
   const [robotState, setRobotState] = useState<RobotState>("average");
   const [resultData, setResultData] = useState<GeminiResponse | null>(null);
+  const [aiResults, setAiResults] = useState<(boolean | null)[]>([]);
+  const [aiDetectedCounts, setAiDetectedCounts] = useState<number[][]>([]);
 
   // Memory Cleanup: Clear all temp data, timers and frames
   const cleanupTempData = useCallback(() => {
@@ -95,6 +101,10 @@ const App: React.FC = () => {
     // Reset heavy state
     setCapturedFrames([]);
     setLocalResults([]);
+    setAiResults([]);
+    setAiDetectedCounts([]);
+    aiResultsRef.current = [];
+    aiDetectedCountsRef.current = [];
     setCurrentBeat(-1);
     hasHitCurrentBeatRef.current = false;
   }, []);
@@ -450,6 +460,11 @@ const App: React.FC = () => {
     setLocalResults(new Array(newSequence.length).fill(null));
     setCapturedFrames([]);
     setResultData(null);
+    const initialResults = new Array(newSequence.length).fill(null);
+    setAiResults(initialResults);
+    setAiDetectedCounts(new Array(newSequence.length).fill([]));
+    aiResultsRef.current = initialResults;
+    aiDetectedCountsRef.current = new Array(newSequence.length).fill([]);
     setStatus(GameStatus.PLAYING);
     setRobotState("average");
     setCurrentBeat(-1);
@@ -530,69 +545,90 @@ const App: React.FC = () => {
 
     // Start the beat loop after audio offset for perfect sync
     const startBeatLoop = () => {
-      // Show first beat immediately when sequence starts
-      setCurrentBeat(0);
+      // Create groups to store frames chronologically for each beat
+      const beatFrameGroups: (string | null)[][] = Array.from(
+        { length: seq.length },
+        () => [null, null, null]
+      );
 
-      const captureFrame = () => {
-        if (videoRef.current && canvasRef.current) {
-          const canvas = canvasRef.current;
-          const video = videoRef.current;
-          const ctx = canvas.getContext("2d");
-          if (ctx) {
-            ctx.drawImage(video, 0, 0, 320, 240);
-            return canvas.toDataURL("image/jpeg", 0.5);
-          }
-        }
-        return null;
-      };
+      // Snapshot offsets per beat: 500ms before, 0ms (on the beat), 500ms after
+      const snapshotOffsets = [-500, 0, 500];
 
-      // Trigger bursts for a specific beat
-      const triggerBurst = (beatIdx: number) => {
-        const offsets = [0.25, 0.5, 0.75];
-        offsets.forEach((offset) => {
+      // Schedule ALL snapshots for the entire sequence immediately
+      seq.forEach((target, beatIdx) => {
+        const beatMoment = beatIdx * interval;
+
+        snapshotOffsets.forEach((offsetMs, snapshotIdx) => {
+          const delay = beatMoment + offsetMs;
+
+          // Capture frame at the precise moment (using setTimeout from loop start)
           const timerId = setTimeout(() => {
-            const frame = captureFrame();
-            if (frame) frames.push(frame);
-          }, interval * offset);
+            const frame =
+              videoRef.current && canvasRef.current
+                ? (() => {
+                    const canvas = canvasRef.current;
+                    const video = videoRef.current;
+                    const ctx = canvas.getContext("2d");
+                    if (ctx) {
+                      ctx.drawImage(video, 0, 0, 320, 240);
+                      return canvas.toDataURL("image/jpeg", 0.5);
+                    }
+                    return null;
+                  })()
+                : null;
+
+            if (frame) {
+              beatFrameGroups[beatIdx][snapshotIdx] = frame;
+
+              // If this specific beat group is now complete, send to AI
+              if (
+                beatFrameGroups[beatIdx].every((f) => f !== null) &&
+                judgementMode === "AI"
+              ) {
+                analyzeBeat(
+                  beatIdx,
+                  beatFrameGroups[beatIdx] as string[],
+                  target
+                );
+              }
+            }
+          }, Math.max(0, delay));
           gameTimersRef.current.push(timerId);
         });
-      };
+      });
 
-      // Initial burst for first beat
-      triggerBurst(0);
+      // Show first beat immediately
+      setCurrentBeat(0);
 
-      // Use consistent interval from the start - first callback happens after one interval
       const loopId = setInterval(() => {
-        // JUDGE THE PREVIOUS BEAT (The one we just finished showing)
+        // JUDGE THE PREVIOUS BEAT (Local fallback logic)
         if (beat >= 0 && beat < seq.length) {
-          // JUDGMENT: Use the "hasHit" flag which caught the gesture at any point in the beat
           const isHit = hasHitCurrentBeatRef.current;
           results[beat] = isHit;
-          setLocalResults([...results]); // Update UI
+          setLocalResults([...results]);
 
           if (isHit) playSuccessSound();
           else playFailSound();
         }
 
-        // Increment to next beat
         beat++;
-        hasHitCurrentBeatRef.current = false; // Reset for the new beat
+        hasHitCurrentBeatRef.current = false;
 
-        // Check if we've shown all beats
         if (beat >= seq.length) {
           clearInterval(loopId);
-          // Small delay to ensure the last burst capture ('After') is finished
+          // Wait for the absolute last +500ms snapshot plus a tiny safety margin
           const finishTimer = setTimeout(() => {
-            setCapturedFrames(frames);
-            analyzeGame(seq, frames, results);
-          }, interval * 0.8);
+            const flattened = beatFrameGroups
+              .flat()
+              .filter((f) => f !== null) as string[];
+            setCapturedFrames(flattened);
+            analyzeGame(seq, results);
+          }, 600);
           gameTimersRef.current.push(finishTimer);
           return;
         }
 
-        // Show current beat and trigger its burst
         setCurrentBeat(beat);
-        triggerBurst(beat);
       }, interval);
       gameTimersRef.current.push(loopId);
     };
@@ -606,9 +642,58 @@ const App: React.FC = () => {
     }
   };
 
+  const analyzeBeat = async (
+    beatIdx: number,
+    frames: string[],
+    target: number
+  ) => {
+    try {
+      const ai = getAI(process.env.API_KEY || "");
+      const imageParts = frames.map((dataUrl) => ({
+        inlineData: {
+          mimeType: "image/jpeg",
+          data: dataUrl.split(",")[1],
+        },
+      }));
+
+      const prompt = `
+        Analyze these 3 snaps of a player's hand. 
+        Target number of fingers: ${target}.
+        Return JSON format: { "success": boolean, "detected_count": number[] }
+        The 'detected_count' array must have exactly 3 numbers representing what you saw in each snapshot.
+      `;
+
+      console.log(`🤖 AI Sending Beat ${beatIdx} (Target: ${target})...`);
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{ parts: [{ text: prompt }, ...imageParts] }],
+        config: { responseMimeType: "application/json" },
+      });
+
+      const data = JSON.parse(response.text);
+      console.log(`✅ AI Received Beat ${beatIdx}:`, data);
+
+      // Ensure counts are numbers and derive success manually for 100% consistency
+      const detectedCounts = (data.detected_count || []).map(
+        (v: any) => parseInt(v) || 0
+      );
+      const isSuccess = detectedCounts.some((c: number) => c === target);
+
+      // Update Ref for logic
+      aiResultsRef.current[beatIdx] = isSuccess;
+      aiDetectedCountsRef.current[beatIdx] = detectedCounts;
+
+      // Update State for UI
+      setAiResults([...aiResultsRef.current]);
+      setAiDetectedCounts([...aiDetectedCountsRef.current]);
+    } catch (e) {
+      console.error(`AI Beat ${beatIdx} failed:`, e);
+      // Fail silently, analyzeGame will use local fallback for missing results
+    }
+  };
+
   const analyzeGame = async (
     seq: number[],
-    frames: string[],
     localResults: (boolean | null)[]
   ) => {
     setStatus(GameStatus.ANALYZING);
@@ -628,71 +713,53 @@ const App: React.FC = () => {
         score: localScore,
         feedback: "Local Tracking complete. Ultra-fast feedback active!",
         detailed_results: localResults.map((r) => r === true),
-        detected_counts: new Array(frames.length).fill(0), // Placeholder for UI
+        detected_counts: new Array(seq.length * 3).fill(0), // Placeholder for UI
       });
       setStatus(GameStatus.RESULT);
       return;
     }
 
     try {
-      // Reuse persistent AI instance
-      const ai = getAI(process.env.API_KEY || "");
+      // 1. Wait for AT LEAST ONE AI result to finish before showing result screen
+      // This makes the transition feel instant
+      let attempts = 0;
+      let hasOneResult = false;
 
-      // Prepare image parts
-      const imageParts = frames.map((dataUrl) => ({
-        inlineData: {
-          mimeType: "image/jpeg",
-          data: dataUrl.split(",")[1],
-        },
-      }));
+      while (attempts < 40) {
+        const currentCount = aiResultsRef.current.filter(
+          (r) => r !== null
+        ).length;
 
-      const prompt = `
-                You are a judge for a rhythm game.
-                The player had to show a specific number of fingers for each beat.
-                Target Sequence: [${seq.join(", ")}].
-                I have provided ${frames.length} images.
-                CRITICAL: For each beat in the target sequence, there are 3 snapshots (Before, During, and After).
-                Total beats: ${seq.length}. Total images: ${frames.length}.
-                
-                YOUR TASK:
-                1. For each beat, evaluate the 3 snapshots provided.
-                2. If AT LEAST ONE of the 3 images in the group correctly shows the target number of fingers, count that beat as a SUCCESS.
-                3. Be strict but fair - if the player was caught transitioning (flickering), but managed to show the correct number in at least one snapshot, give them the point.
-                
-                Return JSON:
-                {
-                    "success": boolean (true if > 60% correct),
-                    "correct_count": number,
-                    "score": number (0-100),
-                    "feedback": "Short witty comment (max 10 words)",
-                    "detailed_results": [boolean array matching sequence length],
-                    "detected_counts": [number array matching EVERY INDIVIDUAL frame provided]
-                }
-            `;
+        if (currentCount > 0 && !hasOneResult) {
+          hasOneResult = true;
+          setStatus(GameStatus.RESULT);
+        }
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [
-          {
-            parts: [{ text: prompt }, ...imageParts],
-          },
-        ],
-        config: {
-          responseMimeType: "application/json",
-        },
+        // If all are done, finish pooling
+        if (currentCount >= seq.length) break;
+
+        await new Promise((r) => setTimeout(r, 250));
+        attempts++;
+      }
+
+      // 2. Aggregate final data from REF once all is settled (or timeout)
+      const finalAiResults = aiResultsRef.current.slice(0, seq.length);
+      const correct_count = finalAiResults.filter((r) => r === true).length;
+      const score = Math.round((correct_count / seq.length) * 100);
+
+      setResultData({
+        success: score > 60,
+        correct_count,
+        score,
+        feedback:
+          score > 80 ? "Perfect rhythm!" : "AI verified your performance.",
+        detailed_results: finalAiResults.map((r) => r === true),
+        detected_counts: aiDetectedCountsRef.current.flat(),
       });
-
-      const responseText = response.text;
-      if (!responseText) throw new Error("Empty response from AI");
-
-      const data: GeminiResponse = JSON.parse(responseText);
-
-      setResultData(data);
-      setRobotState(data.success ? "happy" : "sad");
-      setStatus(GameStatus.RESULT);
+      setRobotState(score > 60 ? "happy" : "sad");
     } catch (error) {
-      console.error("Gemini Analysis Failed", error);
-      // Fallback to local results if API fails
+      console.error("Gemini Analysis Failed or Timeout", error);
+      // Fallback to local results
       setRobotState(localScore > 60 ? "happy" : "sad");
       setResultData({
         success: localScore > 60,
@@ -718,7 +785,7 @@ const App: React.FC = () => {
       <video
         ref={videoRef}
         className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
-        style={{ opacity: videoOpacity }}
+        style={{ opacity: 0 }}
         playsInline
         muted
         autoPlay
@@ -899,7 +966,7 @@ const App: React.FC = () => {
         )}
 
         {/* --- RESULT STATE --- */}
-        {status === GameStatus.RESULT && resultData && (
+        {status === GameStatus.RESULT && (
           <div
             className="flex flex-col items-center gap-4 md:gap-6 w-full max-w-4xl animate-pop px-3 md:px-4 overflow-y-auto pb-4"
             style={{
@@ -908,13 +975,21 @@ const App: React.FC = () => {
           >
             <Robot state={robotState} />
 
-            <h1
-              className={`text-6xl md:text-8xl font-black ${
-                resultData.success ? "text-white" : "text-white/80"
-              } drop-shadow-[0_4px_4px_rgba(0,0,0,1)]`}
-            >
-              {resultData.correct_count} / {sequence.length}
-            </h1>
+            {(() => {
+              const currentCorrect = aiResults.filter((r) => r === true).length;
+              const isFinished =
+                aiResults.filter((r) => r === null).length === 0;
+
+              return (
+                <h1
+                  className={`text-6xl md:text-8xl font-black text-white drop-shadow-[0_4px_4px_rgba(0,0,0,1)] ${
+                    !isFinished ? "animate-pulse" : ""
+                  }`}
+                >
+                  {currentCorrect} / {sequence.length}
+                </h1>
+              );
+            })()}
 
             {/* Detailed Results Panel */}
             <div className="bg-black/60 p-6 rounded-3xl border border-white/10 w-full backdrop-blur-md">
@@ -925,12 +1000,26 @@ const App: React.FC = () => {
               {/* Grid of Results */}
               <div className="flex gap-1.5 md:gap-2 mb-4 md:mb-6 justify-center flex-wrap">
                 {sequence.map((target, idx) => {
-                  const isHit = resultData.detailed_results[idx];
-                  const colorClass = isHit
+                  const aiRes = aiResults[idx];
+                  const isPending = aiRes === null;
+
+                  const colorClass = isPending
+                    ? "border-white/20 bg-white/5 animate-pulse"
+                    : aiRes === true
                     ? "border-green-500 bg-green-500/20"
                     : "border-red-500 bg-red-500/20";
-                  const textClass = isHit ? "text-green-500" : "text-red-500";
-                  const label = isHit ? "HIT" : "MISS";
+
+                  const textClass = isPending
+                    ? "text-white/20"
+                    : aiRes === true
+                    ? "text-green-500"
+                    : "text-red-500";
+
+                  const label = isPending
+                    ? "..."
+                    : aiRes === true
+                    ? "HIT"
+                    : "MISS";
 
                   return (
                     <div
@@ -954,54 +1043,70 @@ const App: React.FC = () => {
 
               {/* AI Feedback Quote */}
               <div className="text-base md:text-xl italic mb-3 md:mb-4 text-center px-2">
-                "{resultData.feedback}"
+                {resultData
+                  ? `"${resultData.feedback}"`
+                  : "Calculating final judgment..."}
               </div>
 
               {/* Captured Frames Grid */}
               <div className="flex gap-2 md:gap-4 justify-center flex-wrap mt-3 md:mt-4">
                 {sequence.map((targetCount, beatIdx) => {
+                  const aiRes = aiResults[beatIdx];
+                  const isPending = aiRes === null;
+
+                  // Get detected counts for this beat group
+                  const beatDetected = aiDetectedCounts[beatIdx] || [];
                   const startIndex = beatIdx * 3;
-                  const indices = [startIndex, startIndex + 1, startIndex + 2];
 
-                  // Pick the first correct match, or fallback to the middle frame
-                  let displayIdx = indices.find(
-                    (idx) => resultData.detected_counts[idx] === targetCount
-                  );
-                  if (displayIdx === undefined) displayIdx = startIndex + 1;
+                  // Logic to pick a frame to show
+                  let displayFrameIdx = 1; // Default to middle
+                  let detectedVal: string | number = "?";
 
-                  const frame = capturedFrames[displayIdx];
-                  const detected =
-                    resultData.detected_counts[displayIdx] ?? "?";
-                  const isCorrectMatch = detected === targetCount;
-                  const isHit = resultData.detailed_results[beatIdx];
+                  if (!isPending) {
+                    // If we have AI results, try to find a matching frame
+                    const matchIdx = beatDetected.findIndex(
+                      (c) => c === targetCount
+                    );
+                    displayFrameIdx = matchIdx !== -1 ? matchIdx : 1;
+                    detectedVal = beatDetected[displayFrameIdx];
+                  }
 
-                  let borderColor = isHit ? "border-white" : "border-white/30";
+                  const frame = capturedFrames[startIndex + displayFrameIdx];
+                  const colorClass = isPending
+                    ? "border-white/10"
+                    : aiRes === true
+                    ? "border-green-500"
+                    : "border-red-500";
 
-                  const badgeColor = isCorrectMatch
-                    ? "bg-white text-black"
-                    : "bg-red-600 text-white";
+                  const badgeColor = isPending
+                    ? "bg-white/10"
+                    : aiRes === true
+                    ? "bg-green-600"
+                    : "bg-red-600";
 
                   return (
                     <div
                       key={beatIdx}
-                      className={`relative w-24 h-32 md:w-32 md:h-44 rounded-lg md:rounded-xl overflow-hidden border-2 transition-all ${borderColor} bg-black/50 active:scale-110 md:hover:scale-110 origin-bottom duration-300 group touch-manipulation`}
+                      className={`relative w-24 h-32 md:w-32 md:h-44 rounded-lg md:rounded-xl overflow-hidden border-2 transition-all ${colorClass} bg-black/50 active:scale-110 md:hover:scale-110 origin-bottom duration-300 group touch-manipulation`}
                     >
                       <img
                         src={frame}
                         alt={`beat ${beatIdx + 1}`}
-                        className="w-full h-full object-cover opacity-90 group-hover:opacity-100"
+                        className={`w-full h-full object-cover transition-opacity ${
+                          isPending ? "opacity-30 blur-[2px]" : "opacity-90"
+                        } group-hover:opacity-100`}
                       />
                       <div className="absolute top-1 right-1 bg-black/40 backdrop-blur-sm rounded text-[8px] md:text-[10px] text-white/50 px-1.5 py-0.5 font-mono border border-white/10">
-                        BEAT {beatIdx + 1}
+                        {isPending ? "JUDGING..." : `BEAT ${beatIdx + 1}`}
                       </div>
                       <div
-                        className={`absolute bottom-0 w-full ${badgeColor} py-1 flex flex-col items-center shadow-[0_-2px_10px_rgba(0,0,0,0.3)]`}
+                        className={`absolute bottom-0 w-full ${badgeColor} py-1 flex flex-col items-center shadow-[0_-2px_10_rgba(0,0,0,0.3)] transition-colors`}
                       >
                         <span className="text-[10px] md:text-xs font-black text-white uppercase tracking-tighter">
                           TAR: {targetCount}
                         </span>
                         <span className="text-[8px] md:text-[10px] font-bold text-white/90 uppercase tracking-wider">
-                          SAW: {detected}
+                          SAW: {isPending ? "?" : detectedVal}
                         </span>
                       </div>
                     </div>
