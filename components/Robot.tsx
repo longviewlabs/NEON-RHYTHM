@@ -11,106 +11,31 @@ interface RobotProps {
 }
 
 const Robot: React.FC<RobotProps> = ({ state }) => {
+  const getGifPath = () => {
+    switch (state) {
+      case "happy":
+        return "/win.gif";
+      case "sad":
+        return "/lose.gif";
+      case "analyzing":
+      case "average":
+      default:
+        return "/judging.gif";
+    }
+  };
+
   return (
-    <div
-      className={`transform scale-[0.6] sm:scale-75 md:scale-100 transition-all duration-500`}
-    >
-      {/* --- SAD ROBOT --- */}
-      {state === "sad" && (
-        <div className="relative">
-          <div className="w-1.5 h-6 bg-gray-400 absolute -top-4 left-1/2 -translate-x-1/2 origin-bottom -rotate-45 z-0 animate-pulse">
-            <div className="w-3.5 h-3.5 bg-gray-600 rounded-full absolute -top-3.5 -left-1 opacity-50"></div>
-          </div>
-          <div className="w-36 h-28 bg-white rounded-[45px] relative flex justify-center items-center shadow-lg z-10 animate-sob">
-            <div className="w-24 h-16 bg-gray-800 rounded-[28px] relative flex flex-col justify-center items-center overflow-hidden border-4 border-gray-400 shadow-inner">
-              <div className="flex gap-4 mb-2 z-10">
-                <div className="w-3.5 h-3.5 bg-green-500 rounded-full animate-squeeze"></div>
-                <div className="w-3.5 h-3.5 bg-green-500 rounded-full animate-squeeze"></div>
-              </div>
-              <div className="w-5 h-2.5 border-t-4 border-green-500 rounded-t-xl opacity-90"></div>
+    <div className="relative group">
+      {/* Decorative Glow */}
+      <div className="absolute -inset-4 bg-white/5 rounded-full blur-2xl opacity-50 group-hover:opacity-100 transition-opacity"></div>
 
-              {/* Tears */}
-              <div
-                className="absolute w-2 h-2 bg-gray-200 rounded-full top-4 left-5 opacity-0 animate-cry"
-                style={{ animationDelay: "0s" }}
-              ></div>
-              <div
-                className="absolute w-2 h-2 bg-gray-200 rounded-full top-4 right-5 opacity-0 animate-cry"
-                style={{ animationDelay: "0.4s" }}
-              ></div>
-            </div>
-          </div>
-          <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 w-16 h-2 bg-black/20 rounded-full animate-pulse"></div>
-        </div>
-      )}
-
-      {/* --- HAPPY ROBOT --- */}
-      {state === "happy" && (
-        <div className="relative">
-          {/* Particles */}
-          <div className="absolute -top-10 -left-10 text-white text-2xl animate-ping">
-            ★
-          </div>
-          <div className="absolute -top-8 -right-10 text-gray-300 text-xl animate-bounce">
-            ♥
-          </div>
-
-          <div className="w-1.5 h-6 bg-gray-300 absolute -top-4 left-1/2 -translate-x-1/2 origin-bottom z-0 animate-[waggle_0.2s_linear_infinite]">
-            <div className="w-3.5 h-3.5 bg-green-500 rounded-full absolute -top-3.5 -left-1 animate-pulse"></div>
-          </div>
-          <div className="w-36 h-28 bg-white rounded-[45px] relative flex justify-center items-center shadow-lg z-10 animate-jump border-2 border-green-500">
-            <div className="w-24 h-16 bg-gray-800 rounded-[28px] relative flex flex-col justify-center items-center overflow-hidden border-4 border-green-500">
-              <div className="flex gap-5 mb-0.5 z-10">
-                <div className="w-4 h-3 border-t-[5px] border-green-500 rounded-t-full animate-twinkle"></div>
-                <div className="w-4 h-3 border-t-[5px] border-green-500 rounded-t-full animate-twinkle"></div>
-              </div>
-              <div className="w-6 h-3.5 bg-green-500 rounded-b-xl mt-1 overflow-hidden relative animate-[big-grin_0.8s_infinite]">
-                <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-4 h-2.5 bg-red-400 rounded-full"></div>
-              </div>
-              <div className="absolute bottom-3 left-3 w-3 h-2 bg-gray-400 rounded-full opacity-80 animate-pulse"></div>
-              <div className="absolute bottom-3 right-3 w-3 h-2 bg-gray-400 rounded-full opacity-80 animate-pulse"></div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- ANALYZING ROBOT --- */}
-      {state === "analyzing" && (
-        <div className="relative">
-          <div className="w-1.5 h-6 bg-gray-300 absolute -top-4 left-1/2 -translate-x-1/2 origin-bottom z-0 animate-[waggle_3s_ease_infinite]">
-            <div className="w-3.5 h-3.5 bg-red-500 rounded-full absolute -top-3.5 -left-1 shadow-[0_0_8px_#ef4444] animate-pulse"></div>
-          </div>
-          <div className="w-36 h-28 bg-white rounded-[45px] relative flex justify-center items-center shadow-lg z-10 animate-jump">
-            <div className="w-24 h-16 bg-gray-800 rounded-[28px] relative flex flex-col justify-center items-center overflow-hidden border-4 border-white shadow-inner">
-              <div className="absolute w-full h-1/3 bg-gradient-to-b from-transparent via-white/20 to-transparent top-[-50%] animate-scan z-20"></div>
-              <div className="flex gap-4 mb-1 animate-look z-10">
-                <div className="w-3.5 h-3.5 bg-white rounded-full"></div>
-                <div className="w-3.5 h-3.5 bg-white rounded-full"></div>
-              </div>
-              <div className="w-4 h-2 border-b-2 border-white rounded-b-lg"></div>
-            </div>
-          </div>
-          <div className="absolute -right-4 -top-4 w-8 h-8 border-2 border-dashed border-gray-400 rounded-full animate-spin opacity-80"></div>
-        </div>
-      )}
-
-      {/* --- AVERAGE ROBOT --- */}
-      {state === "average" && (
-        <div className="relative">
-          <div className="w-1.5 h-6 bg-gray-300 absolute -top-4 left-1/2 -translate-x-1/2 origin-bottom z-0 animate-[slow-sway_4s_infinite]">
-            <div className="w-3.5 h-3.5 bg-purple-300 rounded-full absolute -top-3.5 -left-1 shadow-[0_0_8px_#d8b4fe] opacity-70"></div>
-          </div>
-          <div className="w-36 h-28 bg-white rounded-[45px] relative flex justify-center items-center shadow-lg z-10 animate-[polite-hover_4s_infinite]">
-            <div className="w-24 h-16 bg-gray-800 rounded-[28px] relative flex flex-col justify-center items-center overflow-hidden border-4 border-purple-300 shadow-inner">
-              <div className="flex gap-5 mb-1.5">
-                <div className="w-3.5 h-3.5 bg-purple-300 rounded-full shadow-[0_0_8px_#d8b4fe] animate-[slow-blink_4s_infinite]"></div>
-                <div className="w-3.5 h-3.5 bg-purple-300 rounded-full shadow-[0_0_8px_#d8b4fe] animate-[slow-blink_4s_infinite]"></div>
-              </div>
-              <div className="w-4 h-1.5 border-b-2 border-purple-300 rounded-full"></div>
-            </div>
-          </div>
-        </div>
-      )}
+      <div className="relative w-48 h-48 md:w-64 md:h-64 flex items-center justify-center">
+        <img
+          src={getGifPath()}
+          alt={`${state} state`}
+          className="w-full h-full object-contain rounded-3xl"
+        />
+      </div>
     </div>
   );
 };
