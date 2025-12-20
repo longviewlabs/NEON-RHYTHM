@@ -1174,7 +1174,7 @@ const App: React.FC = () => {
                               "transition-all duration-300 ease-out inline-block";
                             if (isCurrent && countdown === null) {
                               displayClass +=
-                                " text-yellow-400 scale-[1.3] drop-shadow-[0_0_30px_rgba(250,204,21,0.6)] z-10 font-black";
+                                " text-yellow-400 scale-[1.6] drop-shadow-[0_0_30px_rgba(250,204,21,0.6)] z-10 font-black";
                             } else {
                               displayClass += " text-white opacity-100";
                             }
