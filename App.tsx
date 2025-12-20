@@ -301,7 +301,6 @@ const App: React.FC = () => {
             else if (res === false) playFailSound();
             i++;
 
-            // If this was the last revealed beat, decide win or lose sound
             if (i === sequence.length) {
               const totalCorrect = [...aiResultsRef.current].filter(
                 (r) => r === true
@@ -309,6 +308,7 @@ const App: React.FC = () => {
               const isPerfect = totalCorrect === sequence.length;
               setTimeout(() => {
                 playOneShot(isPerfect ? "win" : "lose");
+                setRobotState(isPerfect ? "happy" : "sad");
               }, 500);
             }
           } else {
@@ -340,6 +340,18 @@ const App: React.FC = () => {
             i++;
           } else {
             clearInterval(interval);
+            // Check if all were revealed already and play sound/set state
+            setRevealedResults((prev) => {
+              if (prev.every((r) => r !== null)) {
+                const totalCorrect = prev.filter((r) => r === true).length;
+                const isPerfect = totalCorrect === sequence.length;
+                setTimeout(() => {
+                  playOneShot(isPerfect ? "win" : "lose");
+                  setRobotState(isPerfect ? "happy" : "sad");
+                }, 500);
+              }
+              return prev;
+            });
           }
         }, 150);
         gameTimersRef.current.push(interval);
@@ -369,6 +381,7 @@ const App: React.FC = () => {
               const isPerfect = totalCorrect === sequence.length;
               setTimeout(() => {
                 playOneShot(isPerfect ? "win" : "lose");
+                setRobotState(isPerfect ? "happy" : "sad");
               }, 500);
             }
             return next;
@@ -895,7 +908,7 @@ const App: React.FC = () => {
     // If LOCAL mode is selected, skip AI analysis and show results immediately
     if (judgementMode === "LOCAL") {
       const isPerfect = localScore === 100;
-      setRobotState(isPerfect ? "happy" : "sad");
+      setRobotState("average");
       setResultData({
         success: isPerfect,
         correct_count: localCorrectCount,
@@ -947,7 +960,7 @@ const App: React.FC = () => {
         detailed_results: finalAiResults.map((r) => r === true),
         detected_counts: aiDetectedCountsRef.current.flat(),
       });
-      setRobotState(isPerfect ? "happy" : "sad");
+      setRobotState("average");
     } catch (error) {
       console.error("Gemini Analysis Failed or Timeout", error);
       // Fallback to local results
@@ -995,7 +1008,11 @@ const App: React.FC = () => {
         videoRef={videoRef}
         landmarksRef={landmarksRef}
         isCameraReady={isCameraReady}
-        showFingerVector={showFingerVector}
+        showFingerVector={
+          showFingerVector ||
+          status === GameStatus.MENU ||
+          status === GameStatus.LOADING
+        }
       />
 
       {/* Minimal Overlay Shadow (Top only for visibility) */}
