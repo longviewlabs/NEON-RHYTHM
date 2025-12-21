@@ -1003,10 +1003,12 @@ const App: React.FC = () => {
       {/* Background Video */}
       <video
         ref={videoRef}
-        className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
-        style={{
-          opacity: window.location.hostname === "1localhost" ? 0 : videoOpacity,
-        }}
+        className="absolute inset-0 w-full h-full object-contain scale-x-[-1]"
+        style={
+          {
+            //   opacity: window.location.hostname === "localhost" ? 1 : videoOpacity,
+          }
+        }
         playsInline
         muted
         autoPlay

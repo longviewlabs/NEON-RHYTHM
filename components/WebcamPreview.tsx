@@ -80,17 +80,17 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
           let drawW, drawH, startX, startY;
 
           if (screenRatio > videoRatio) {
-            // Screen is wider than video -> fit width, crop top/bottom
-            drawW = screenW;
-            drawH = screenW / videoRatio;
-            startX = 0;
-            startY = (screenH - drawH) / 2;
-          } else {
-            // Screen is narrower than video -> fit height, crop left/right
+            // Screen is wider than video -> fit height, letterbox left/right
             drawH = screenH;
             drawW = screenH * videoRatio;
             startX = (screenW - drawW) / 2;
             startY = 0;
+          } else {
+            // Screen is narrower than video -> fit width, letterbox top/bottom
+            drawW = screenW;
+            drawH = screenW / videoRatio;
+            startX = 0;
+            startY = (screenH - drawH) / 2;
           }
 
           // --- Draw Landmarks ---
