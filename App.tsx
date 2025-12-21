@@ -288,17 +288,23 @@ const App: React.FC = () => {
   // Handle Score Screen Reveal Logic and Sounds
   useEffect(() => {
     if (status === GameStatus.RESULT) {
+      // Initialize revealedResults to the correct length filled with null
+      // Use functional update to ensure we are working with the latest state if needed,
+      // though here we just want to reset it for the new result screen.
+      setRevealedResults(new Array(sequence.length).fill(null));
+
       if (judgementMode === "LOCAL") {
         // LOCAL MODE: Reveal one by one with a delay
-        setRevealedResults(new Array(sequence.length).fill(null));
         let i = 0;
         const interval = setInterval(() => {
           if (i < sequence.length) {
-            // FIX: Ensure we use the most recent value from the ref, fallback to false if still null
-            const res = aiResultsRef.current[i] ?? false; 
+            // FIX: Ensure we use the most recent value from the ref, fallback to false if still null/undefined
+            const res = aiResultsRef.current[i] ?? false;
             setRevealedResults((prev) => {
               const next = [...prev];
-              next[i] = res;
+              if (i < next.length) {
+                next[i] = res;
+              }
               return next;
             });
             if (res === true) playSuccessSound();
@@ -306,9 +312,9 @@ const App: React.FC = () => {
             i++;
 
             if (i === sequence.length) {
-              const totalCorrect = [...aiResultsRef.current].filter(
-                (r) => r === true
-              ).length;
+              const totalCorrect = aiResultsRef.current
+                .slice(0, sequence.length)
+                .filter((r) => r === true).length;
               const isPerfect = totalCorrect === sequence.length;
               setTimeout(() => {
                 playOneShot(isPerfect ? "win" : "lose");
@@ -323,21 +329,18 @@ const App: React.FC = () => {
         return () => clearInterval(interval);
       } else {
         // AI MODE: Sync revealedResults with aiResults as they come
-        // If results already exist when entering screen, we play them with a slight stagger
-        // otherwise they play when aiResults updates (handled in next effect)
+        // We use a staggered reveal for already available results, 
+        // and then the next effect handles ones that arrive late.
         const initialResults = [...aiResults];
-        setRevealedResults(new Array(sequence.length).fill(null));
-
         let i = 0;
         const interval = setInterval(() => {
           if (i < sequence.length) {
-            // Check if result is available
-            if (initialResults[i] !== null) {
+            // Check if result is available (handle both null and undefined)
+            if (initialResults[i] != null) {
               const res = initialResults[i];
               setRevealedResults((prev) => {
                 const next = [...prev];
-                // Only update if it's currently null to avoid overwriting newer results
-                if (next[i] === null) {
+                if (i < next.length && next[i] === null) {
                   next[i] = res;
                   if (res === true) playSuccessSound();
                   else if (res === false) playFailSound();
@@ -348,33 +351,43 @@ const App: React.FC = () => {
             i++;
           } else {
             clearInterval(interval);
-            // After initial staggered reveal, check if any are still null
-            // We DON'T force them here, because they might be still coming from AI
-            // The secondary effect handles late AI results.
-            // If they are still null after the AI pooling timeout in analyzeGame, 
-            // analyzeGame will update aiResults with local fallbacks, which triggers the next effect.
           }
         }, 150);
         gameTimersRef.current.push(interval);
         return () => clearInterval(interval);
       }
     } else {
+      // When not in RESULT state, keep revealedResults empty or reset
+      // This prevents the previous game's results from flickering
       setRevealedResults(new Array(sequence.length).fill(null));
     }
-  }, [status, judgementMode, sequence.length, playSuccessSound, playFailSound]);
+  }, [
+    status,
+    judgementMode,
+    sequence.length,
+    playSuccessSound,
+    playFailSound,
+    aiResults, // Added aiResults to dependency to ensure the initialResults snapshot is fresh
+  ]);
 
   // Watch for NEW AI results coming in while on score screen
   useEffect(() => {
     if (status === GameStatus.RESULT && judgementMode === "AI") {
       aiResults.forEach((res, idx) => {
-        if (res !== null && revealedResults[idx] === null) {
-          // Play sound and update revealed
-          if (res === true) playSuccessSound();
-          else if (res === false) playFailSound();
-
+        // Use loose inequality to catch both null and undefined
+        if (res != null) {
           setRevealedResults((prev) => {
+            // If revealedResults hasn't been initialized yet to the correct length, skip
+            if (prev.length <= idx) return prev;
+            
+            // If already revealed, skip
+            if (prev[idx] !== null) return prev;
+
             const next = [...prev];
             next[idx] = res;
+            
+            if (res === true) playSuccessSound();
+            else if (res === false) playFailSound();
 
             // Check if this finalizes the sequence to play win/lose sound
             if (next.every((r) => r !== null)) {
@@ -394,9 +407,11 @@ const App: React.FC = () => {
     aiResults,
     status,
     judgementMode,
-    revealedResults,
+    sequence.length,
     playSuccessSound,
     playFailSound,
+    // Note: removed revealedResults from dependency to avoid infinite loops,
+    // we use functional updates to get the latest state anyway.
   ]);
 
   // Generate random sequence based on difficulty or infinite stats
@@ -971,9 +986,10 @@ const App: React.FC = () => {
       if (sessionId !== gameIdRef.current) return;
 
       // 2. Aggregate final data from REF once all is settled (or timeout)
-      // FIX: If some AI results are still null after timeout, fallback to local results for those specific beats
-      const finalAiResults = aiResultsRef.current.slice(0, seq.length).map((res, idx) => {
-        if (res !== null) return res;
+      // FIX: If some AI results are still null or undefined after timeout, fallback to local results for those specific beats
+      const finalAiResults = Array.from({ length: seq.length }, (_, idx) => {
+        const res = aiResultsRef.current[idx];
+        if (typeof res === "boolean") return res;
         return localResults[idx] === true;
       });
       
@@ -1226,7 +1242,7 @@ const App: React.FC = () => {
               ).length;
               const isFinished =
                 revealedResults.length > 0 &&
-                revealedResults.filter((r) => r === null).length === 0;
+                revealedResults.every((r) => r != null);
 
               return (
                 <div className="flex flex-col items-center">
@@ -1252,7 +1268,7 @@ const App: React.FC = () => {
                 ).length;
                 const isFinished =
                   revealedResults.length > 0 &&
-                  revealedResults.every((r) => r !== null);
+                  revealedResults.every((r) => r != null);
                 const isPerfect =
                   isFinished && currentCorrect === sequence.length;
                 const isDev = window.location.hostname === "localhost";
@@ -1359,7 +1375,7 @@ const App: React.FC = () => {
               <div className="flex gap-1.5 md:gap-2 mb-4 md:mb-6 justify-center flex-wrap">
                 {sequence.map((target, idx) => {
                   const res = revealedResults[idx];
-                  const isPending = res === null;
+                  const isPending = res == null;
 
                   const colorClass = isPending
                     ? "border-white/20 bg-white/5 animate-pulse"
@@ -1410,7 +1426,7 @@ const App: React.FC = () => {
               <div className="flex gap-2 md:gap-4 justify-center flex-wrap mt-3 md:mt-4">
                 {sequence.map((targetCount, beatIdx) => {
                   const res = revealedResults[beatIdx];
-                  const isPending = res === null;
+                  const isPending = res == null;
 
                   // Get detected counts for this beat group
                   const beatDetected = aiDetectedCounts[beatIdx] || [];
