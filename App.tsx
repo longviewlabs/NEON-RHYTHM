@@ -1253,6 +1253,111 @@ const App: React.FC = () => {
               );
             })()}
 
+            {/* Action Buttons */}
+            <div className="flex flex-col items-center gap-4 md:gap-5 mt-3 md:mt-4">
+              {(() => {
+                const currentCorrect = revealedResults.filter(
+                  (r) => r === true
+                ).length;
+                const isFinished =
+                  revealedResults.length > 0 &&
+                  revealedResults.every((r) => r !== null);
+                const isPerfect =
+                  isFinished && currentCorrect === sequence.length;
+                const isDev = window.location.hostname === "localhost";
+
+                if (!isFinished) {
+                  return (
+                    <button
+                      disabled
+                      className="px-12 py-5 bg-white/10 text-white/40 font-black uppercase tracking-widest text-xl cursor-not-allowed opacity-50 border border-white/10 rounded-lg"
+                    >
+                      Analyzing...
+                    </button>
+                  );
+                }
+
+                if (isPerfect || isDev) {
+                  return (
+                    <div className="flex flex-col items-center gap-4">
+                      {isInfiniteMode ? (
+                        <button
+                          onClick={() => {
+                            const nextBpm = currentBpm + 5;
+                            const nextLength = currentLength + 3;
+                            setCurrentBpm(nextBpm);
+                            setCurrentLength(nextLength);
+                            setCurrentRound((r) => r + 1);
+                            startGame(undefined, nextBpm, nextLength);
+                          }}
+                          className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-lg w-full min-w-[280px]"
+                        >
+                          NEXT ROUND
+                          {/* {currentRound + 1} */}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            const diffs = Object.keys(
+                              DIFFICULTIES
+                            ) as Difficulty[];
+                            const currentIndex = diffs.indexOf(difficulty);
+                            const nextDifficulty = diffs[currentIndex + 1];
+
+                            if (nextDifficulty) {
+                              setDifficulty(nextDifficulty);
+                              startGame(nextDifficulty);
+                            } else {
+                              // Reset to beginning when finished
+                              setDifficulty("EASY");
+                              setStatus(GameStatus.MENU);
+                            }
+                          }}
+                          className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-lg w-full min-w-[280px]"
+                        >
+                          {difficulty === "NIGHTMARE" ? "FINISH" : "NEXT ROUND"}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => startGame()}
+                        className="text-white text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] active:opacity-80 md:hover:opacity-80 transition-opacity underline underline-offset-8 min-h-[64px] touch-manipulation"
+                      >
+                        Replay Level
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="flex flex-col items-center gap-4">
+                    <button
+                      onClick={() => startGame()}
+                      className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-lg w-full min-w-[280px]"
+                    >
+                      REPLAY LEVEL
+                    </button>
+                    <p className="text-red-500 font-bold uppercase tracking-widest text-[10px] animate-pulse">
+                      Score 100% to unlock next level
+                    </p>
+                  </div>
+                );
+              })()}
+
+              <button
+                onClick={() => {
+                  setDifficulty("EASY");
+                  setIsInfiniteMode(true);
+                  setCurrentRound(1);
+                  setCurrentBpm(100);
+                  setCurrentLength(5);
+                  setStatus(GameStatus.MENU);
+                }}
+                className="text-white text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] active:opacity-80 md:hover:opacity-80 transition-opacity underline underline-offset-8 min-h-[64px] touch-manipulation"
+              >
+                Back to Menu
+              </button>
+            </div>
+
             {/* Detailed Results Panel */}
             <div className="bg-black/60 p-6 rounded-3xl border border-white/10 w-full backdrop-blur-md">
               <div className="text-center text-xs font-black text-white/40 mb-6 tracking-[0.3em] uppercase">
@@ -1375,111 +1480,6 @@ const App: React.FC = () => {
                   );
                 })}
               </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex flex-col items-center gap-4 md:gap-5 mt-3 md:mt-4">
-              {(() => {
-                const currentCorrect = revealedResults.filter(
-                  (r) => r === true
-                ).length;
-                const isFinished =
-                  revealedResults.length > 0 &&
-                  revealedResults.every((r) => r !== null);
-                const isPerfect =
-                  isFinished && currentCorrect === sequence.length;
-                const isDev = window.location.hostname === "localhost";
-
-                if (!isFinished) {
-                  return (
-                    <button
-                      disabled
-                      className="px-12 py-5 bg-white/10 text-white/40 font-black uppercase tracking-widest text-xl cursor-not-allowed opacity-50 border border-white/10 rounded-lg"
-                    >
-                      Analyzing...
-                    </button>
-                  );
-                }
-
-                if (isPerfect || isDev) {
-                  return (
-                    <div className="flex flex-col items-center gap-4">
-                      {isInfiniteMode ? (
-                        <button
-                          onClick={() => {
-                            const nextBpm = currentBpm + 5;
-                            const nextLength = currentLength + 3;
-                            setCurrentBpm(nextBpm);
-                            setCurrentLength(nextLength);
-                            setCurrentRound((r) => r + 1);
-                            startGame(undefined, nextBpm, nextLength);
-                          }}
-                          className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-lg w-full min-w-[280px]"
-                        >
-                          NEXT ROUND
-                          {/* {currentRound + 1} */}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => {
-                            const diffs = Object.keys(
-                              DIFFICULTIES
-                            ) as Difficulty[];
-                            const currentIndex = diffs.indexOf(difficulty);
-                            const nextDifficulty = diffs[currentIndex + 1];
-
-                            if (nextDifficulty) {
-                              setDifficulty(nextDifficulty);
-                              startGame(nextDifficulty);
-                            } else {
-                              // Reset to beginning when finished
-                              setDifficulty("EASY");
-                              setStatus(GameStatus.MENU);
-                            }
-                          }}
-                          className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-lg w-full min-w-[280px]"
-                        >
-                          {difficulty === "NIGHTMARE" ? "FINISH" : "NEXT ROUND"}
-                        </button>
-                      )}
-                      <button
-                        onClick={() => startGame()}
-                        className="text-white/40 text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] active:text-white md:hover:text-white transition-colors border-b border-white/0 active:border-white/50 md:hover:border-white/50 pb-1 min-h-[44px] touch-manipulation"
-                      >
-                        Replay Level
-                      </button>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div className="flex flex-col items-center gap-4">
-                    <button
-                      onClick={() => startGame()}
-                      className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-lg w-full min-w-[280px]"
-                    >
-                      REPLAY LEVEL
-                    </button>
-                    <p className="text-red-500 font-bold uppercase tracking-widest text-[10px] animate-pulse">
-                      Score 100% to unlock next level
-                    </p>
-                  </div>
-                );
-              })()}
-
-              <button
-                onClick={() => {
-                  setDifficulty("EASY");
-                  setIsInfiniteMode(true);
-                  setCurrentRound(1);
-                  setCurrentBpm(100);
-                  setCurrentLength(5);
-                  setStatus(GameStatus.MENU);
-                }}
-                className="text-white/40 text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] active:text-white md:hover:text-white transition-colors border-b border-white/0 active:border-white/50 md:hover:border-white/50 pb-1 min-h-[44px] touch-manipulation"
-              >
-                Back to Menu
-              </button>
             </div>
           </div>
         )}
