@@ -587,11 +587,9 @@ const App: React.FC = () => {
       await ctx.resume();
     }
 
-    // 2. Play intro music immediately inside the same click handler
-    playTrack("intro");
-
-    setStatus(GameStatus.MENU);
-  }, [isAssetsReady, playTrack]);
+    // 2. Start game directly
+    startGame();
+  }, [isAssetsReady, startGame]);
 
   // Effect to switch music based on state (except Playing, which is handled in startGame)
   useEffect(() => {
@@ -1079,56 +1077,47 @@ const App: React.FC = () => {
               </p>
             </div>
 
+            {/* Difficulty Selection */}
+            <div className="flex flex-col gap-2">
+              <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] text-center mb-1">
+                Choose Your Difficulty
+              </p>
+              {(Object.keys(DIFFICULTIES) as Difficulty[]).map((diff) => (
+                <button
+                  key={diff}
+                  onClick={() => {
+                    setDifficulty(diff);
+                    setIsInfiniteMode(false);
+                  }}
+                  className={`
+                    w-full py-3 rounded-xl text-sm font-black uppercase tracking-widest transition-all border
+                    ${
+                      difficulty === diff
+                        ? "bg-white/20 border-white text-white shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                        : "bg-white/5 border-white/10 text-white/40 hover:bg-white/10"
+                    }
+                  `}
+                >
+                  {DIFFICULTIES[diff].name}
+                </button>
+              ))}
+            </div>
+
             {/* Enter Button */}
             <button
               onClick={handleEnterStudio}
               disabled={!isAssetsReady}
               className={`
-                w-full py-4 rounded-xl text-lg font-black uppercase tracking-widest transition-all
+                w-full py-4 rounded-xl text-lg font-black uppercase tracking-widest transition-all mt-2
                 ${
                   isAssetsReady
-                    ? "bg-white text-black hover:bg-gray-200 active:scale-95"
+                    ? "bg-white text-black hover:bg-gray-200 active:scale-95 shadow-[0_0_30px_rgba(255,255,255,0.3)]"
                     : "bg-white/10 text-white/30 cursor-not-allowed"
                 }
               `}
             >
               {isAssetsReady ? "ENTER" : "LOADING..."}
             </button>
-          </div>
-        )}
-
-        {/* --- MENU STATE --- */}
-        {status === GameStatus.MENU && (
-          <div className="flex flex-col items-center gap-4 md:gap-8 animate-pop w-full max-w-sm md:max-w-none">
-            {!isCameraReady ? (
-              <div className="text-yellow-400 animate-pulse text-xs md:text-sm">
-                Initializing Camera...
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-6">
-                <div className="flex flex-col items-center text-center">
-                  {/* <h2 className="text-xl md:text-2xl font-black text-white/60 tracking-widest uppercase mb-1">
-                    Mode
-                  </h2>  */}
-                  {/* <div className="text-3xl md:text-4xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
-                    FINGER RHYTHM
-                  </div> */}
-                </div>
-
-                <button
-                  onClick={() => {
-                    setIsInfiniteMode(true);
-                    setCurrentRound(1);
-                    setCurrentBpm(100);
-                    setCurrentLength(5);
-                    startGame();
-                  }}
-                  className="group relative px-12 py-5 rounded-full bg-white text-black font-black text-2xl tracking-widest active:scale-95 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
-                >
-                  START INFINITE
-                </button>
-              </div>
-            )}
           </div>
         )}
 
