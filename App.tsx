@@ -52,6 +52,7 @@ const App: React.FC = () => {
 
   // Memory & Timer Management
   const gameTimersRef = useRef<(number | NodeJS.Timeout)[]>([]);
+  const gameIdRef = useRef(0);
 
   // Tracking
   const { isCameraReady, fingerCount, landmarksRef } = useMediaPipe(videoRef);
@@ -634,6 +635,9 @@ const App: React.FC = () => {
     bpmOverride?: number,
     lengthOverride?: number
   ) => {
+    gameIdRef.current += 1; // Increment session ID
+    const currentSessionId = gameIdRef.current;
+    
     cleanupTempData(); // Clear memory/timers from previous rounds
 
     const targetDifficulty = forcedDifficulty || difficulty;
@@ -664,11 +668,6 @@ const App: React.FC = () => {
     // Time until first beat at current playback rate
     const timeToFirstBeat = FIRST_BEAT_TIME_SEC / playbackRate;
 
-    // We have a 3-second countdown, so:
-    // - If first beat is at 3s (at 1x speed), start music immediately
-    // - If first beat takes longer, delay music start
-    // - If first beat comes sooner, start music from an offset
-
     const countdownDuration = 3; // 3 seconds countdown
 
     if (timeToFirstBeat >= countdownDuration) {
@@ -678,7 +677,7 @@ const App: React.FC = () => {
       // Wait for the difference, then start countdown
       const waitTime = (timeToFirstBeat - countdownDuration) * 1000;
       const timerId = setTimeout(() => {
-        startCountdown(newSequence);
+        startCountdown(newSequence, currentSessionId);
       }, waitTime);
       gameTimersRef.current.push(timerId);
     } else {
@@ -688,12 +687,12 @@ const App: React.FC = () => {
       playTrack("game", skipAmount);
 
       // Start countdown immediately
-      startCountdown(newSequence);
+      startCountdown(newSequence, currentSessionId);
     }
   };
 
   // Separated countdown logic for cleaner code
-  const startCountdown = (newSequence: number[]) => {
+  const startCountdown = (newSequence: number[], currentSessionId: number) => {
     let count = 3;
     setCountdown(count);
     playCountdownBeep(count);
@@ -710,13 +709,13 @@ const App: React.FC = () => {
         clearInterval(timerId);
         setCountdown(null);
         // Start sequence immediately - synced with first beat!
-        runSequence(newSequence);
+        runSequence(newSequence, currentSessionId);
       }
     }, 1000);
     gameTimersRef.current.push(timerId);
   };
 
-  const runSequence = (seq: number[]) => {
+  const runSequence = (seq: number[], currentSessionId: number) => {
     // playMusic(); // Removed: Handled in startGame now
     const bpm = isInfiniteMode ? currentBpm : DIFFICULTIES[difficulty].bpm;
     const interval = 60000 / bpm;
@@ -779,7 +778,8 @@ const App: React.FC = () => {
                   analyzeBeat(
                     beatIdx,
                     beatFrameGroups[beatIdx] as string[],
-                    target
+                    target,
+                    currentSessionId
                   );
                 } else {
                   // LOCAL mode: Populate detection counts from MediaPipe
@@ -826,7 +826,7 @@ const App: React.FC = () => {
               .flat()
               .filter((f) => f !== null) as string[];
             setCapturedFrames(flattened);
-            analyzeGame(seq, results);
+            analyzeGame(seq, results, currentSessionId);
           }, 600);
           gameTimersRef.current.push(finishTimer);
           return;
@@ -849,7 +849,8 @@ const App: React.FC = () => {
   const analyzeBeat = async (
     beatIdx: number,
     frames: string[],
-    target: number
+    target: number,
+    sessionId: number
   ) => {
     try {
       const ai = getAI(process.env.API_KEY || "");
@@ -874,6 +875,12 @@ const App: React.FC = () => {
         config: { responseMimeType: "application/json" },
       });
 
+      // Session Check: If game was reset/next round while AI was thinking, ignore this result
+      if (sessionId !== gameIdRef.current) {
+        console.log(`⚠️ AI Result for Beat ${beatIdx} discarded (Old Session)`);
+        return;
+      }
+
       const data = JSON.parse(response.text);
       console.log(`✅ AI Received Beat ${beatIdx}:`, data);
 
@@ -890,10 +897,6 @@ const App: React.FC = () => {
       // Update State for UI
       setAiResults([...aiResultsRef.current]);
       setAiDetectedCounts([...aiDetectedCountsRef.current]);
-
-      // Play sound for real-time AI feedback
-      // if (isSuccess) playSuccessSound();
-      // else playFailSound();
     } catch (e) {
       console.error(`AI Beat ${beatIdx} failed:`, e);
       // Fail silently, analyzeGame will use local fallback for missing results
@@ -902,7 +905,8 @@ const App: React.FC = () => {
 
   const analyzeGame = async (
     seq: number[],
-    localResults: (boolean | null)[]
+    localResults: (boolean | null)[],
+    sessionId: number
   ) => {
     setStatus(GameStatus.ANALYZING);
     // playTrack('score'); // Handled by useEffect monitoring status
@@ -938,9 +942,13 @@ const App: React.FC = () => {
       // 1. Wait for AT LEAST ONE AI result to finish before showing result screen
       // This makes the transition feel instant
       let attempts = 0;
+      const maxAttempts = 20; // ~5 seconds max wait for the FIRST result
       let hasOneResult = false;
 
-      while (attempts < 40) {
+      while (attempts < maxAttempts) {
+        // Exit early if session changed
+        if (sessionId !== gameIdRef.current) return;
+
         const currentCount = aiResultsRef.current.filter(
           (r) => r !== null
         ).length;
@@ -956,6 +964,9 @@ const App: React.FC = () => {
         await new Promise((r) => setTimeout(r, 250));
         attempts++;
       }
+
+      // Session Check
+      if (sessionId !== gameIdRef.current) return;
 
       // 2. Aggregate final data from REF once all is settled (or timeout)
       // FIX: If some AI results are still null after timeout, fallback to local results for those specific beats
@@ -983,10 +994,16 @@ const App: React.FC = () => {
         detected_counts: aiDetectedCountsRef.current.flat(),
       });
       setRobotState("average");
+      
       // Ensure we are in RESULT state if timeout happened before first result
       if (status !== GameStatus.RESULT) setStatus(GameStatus.RESULT);
+
     } catch (error) {
       console.error("Gemini Analysis Failed or Timeout", error);
+      
+      // Session Check
+      if (sessionId !== gameIdRef.current) return;
+
       // Fallback to local results
       const isPerfect = localScore === 100;
       setRobotState(isPerfect ? "happy" : "sad");

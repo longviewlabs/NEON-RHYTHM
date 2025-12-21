@@ -40,4 +40,4 @@ const Robot: React.FC<RobotProps> = ({ state }) => {
   );
 };
 
-export default Robot;
+export default React.memo(Robot);

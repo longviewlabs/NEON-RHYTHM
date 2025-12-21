@@ -151,4 +151,4 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
   );
 };
 
-export default WebcamPreview;
+export default React.memo(WebcamPreview);
