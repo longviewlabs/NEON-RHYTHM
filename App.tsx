@@ -8,6 +8,7 @@ import { useMediaPipe } from "./hooks/useMediaPipe";
 import Robot from "./components/Robot";
 import WebcamPreview from "./components/WebcamPreview";
 import SettingsModal from "./components/SettingsModal";
+import StartScreen from "./components/StartScreen";
 import { useVideoRecorder } from "./hooks/useVideoRecorder";
 import { GoogleGenAI } from "@google/genai";
 import {
@@ -1052,37 +1053,10 @@ const App: React.FC = () => {
       <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-3 md:p-4">
         {/* --- LOADING STATE (Viral Challenge Entry Screen) --- */}
         {status === GameStatus.LOADING && (
-          <div className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden">
-            <div className="container relative z-20 flex flex-col items-center animate-pop">
-              {/* Refined Title Wrapper */}
-              <div className="title-wrapper text-center mb-12 -rotate-[3deg]">
-                <h1 className="title animate-bounce-viral" data-text="FINGER RHYTHM">
-                  <div className="text-content">
-                    <span className="top">FINGER</span>
-                    <span className="bottom">RHYTHM</span>
-                  </div>
-                </h1>
-                <div className="subtitle-viral">
-                  ONLY 1% CAN PASS 💀
-                </div>
-              </div>
-
-              {/* LFG Button Refined */}
-              <button
-                onClick={handleStartGame}
-                disabled={!isAssetsReady}
-                className="start-btn-viral disabled:opacity-50 disabled:cursor-not-allowed group"
-              >
-                <span>LFG!</span>
-                <span className="emoji text-4xl">🔥</span>
-              </button>
-            </div>
-
-            {/* Hand Hint - stuck to bottom */}
-            <div className="footer-hint-viral z-30 select-none">
-              GET YOUR HANDS READY 👋
-            </div>
-          </div>
+          <StartScreen 
+            onStart={handleStartGame} 
+            isAssetsReady={isAssetsReady} 
+          />
         )}
 
         {/* --- MENU STATE --- */}
