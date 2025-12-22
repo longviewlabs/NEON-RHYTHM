@@ -10,6 +10,8 @@ import WebcamPreview from "./components/WebcamPreview";
 import FingerCountDisplay from "./components/FingerCountDisplay";
 import SequenceDisplay from "./components/SequenceDisplay";
 import SettingsModal from "./components/SettingsModal";
+import StartScreen from "./components/StartScreen";
+import { useVideoRecorder } from "./hooks/useVideoRecorder";
 import { GoogleGenAI } from "@google/genai";
 import {
   DIFFICULTIES,
@@ -58,6 +60,7 @@ const App: React.FC = () => {
 
   // Tracking
   const { isCameraReady, fingerCount, landmarksRef } = useMediaPipe(videoRef);
+  const { startRecording, stopRecording, videoBlob, isRecording, setOverlayText } = useVideoRecorder(videoRef);
 
   // Ref to track if target was hit at any point during the beat (Mobile optimization)
   const hasHitCurrentBeatRef = useRef(false);
@@ -75,10 +78,10 @@ const App: React.FC = () => {
   const [sequence, setSequence] = useState<number[]>([]);
   const [currentBeat, setCurrentBeat] = useState(-1);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [scoringEngine, setScoringEngine] = useState<"local" | "ai">("local");
   const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
   const [judgementMode, setJudgementMode] = useState<"LOCAL" | "AI">("LOCAL");
   const [isMuted, setIsMuted] = useState(false);
-  const [showFingerVector, setShowFingerVector] = useState(true);
   const [videoOpacity, setVideoOpacity] = useState(1);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -91,8 +94,8 @@ const App: React.FC = () => {
   // Infinite Mode State
   const [isInfiniteMode, setIsInfiniteMode] = useState(true);
   const [currentRound, setCurrentRound] = useState(1);
-  const [currentBpm, setCurrentBpm] = useState(100);
-  const [currentLength, setCurrentLength] = useState(5);
+  const [currentBpm, setCurrentBpm] = useState(105);
+  const [currentLength, setCurrentLength] = useState(8);
 
   // Analysis Results (Gemini)
   const [robotState, setRobotState] = useState<RobotState>("average");
@@ -173,7 +176,7 @@ const App: React.FC = () => {
       osc.type = "sine";
       osc.frequency.value = freq;
 
-      gain.gain.setValueAtTime(0.08, now); // Slightly boosted
+      gain.gain.setValueAtTime(0.3, now); // Boosted for clarity
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25 + i * 0.05);
 
       osc.connect(gain);
@@ -200,15 +203,15 @@ const App: React.FC = () => {
 
     osc.type = "sawtooth";
     osc.frequency.setValueAtTime(150, now);
-    osc.frequency.linearRampToValueAtTime(50, now + 0.3);
+    osc.frequency.linearRampToValueAtTime(50, now + 0.4);
 
-    gain.gain.setValueAtTime(0.1, now);
-    gain.gain.linearRampToValueAtTime(0.001, now + 0.3);
+    gain.gain.setValueAtTime(0.4, now); // Significantly boosted for "Real-time Fail" feel
+    gain.gain.linearRampToValueAtTime(0.001, now + 0.4);
 
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start();
-    osc.stop(now + 0.3);
+    osc.stop(now + 0.4);
 
     // Cleanup
     setTimeout(() => {
@@ -324,7 +327,7 @@ const App: React.FC = () => {
           } else {
             clearInterval(interval);
           }
-        }, 600);
+        }, 300);
         gameTimersRef.current.push(interval);
         return () => clearInterval(interval);
       } else {
@@ -335,24 +338,44 @@ const App: React.FC = () => {
         let i = 0;
         const interval = setInterval(() => {
           if (i < sequence.length) {
-            // Check if result is available (handle both null and undefined)
-            if (initialResults[i] != null) {
-              const res = initialResults[i];
+            // Check live ref instead of initial snapshot
+            const currentResult = aiResultsRef.current[i];
+            if (currentResult !== null) {
+              const res = currentResult;
               setRevealedResults((prev) => {
                 const next = [...prev];
-                if (i < next.length && next[i] === null) {
-                  next[i] = res;
-                  if (res === true) playSuccessSound();
-                  else if (res === false) playFailSound();
-                }
+                next[i] = res;
                 return next;
               });
+              if (res === true) playSuccessSound();
+              else if (res === false) playFailSound();
+              i++;
             }
-            i++;
           } else {
             clearInterval(interval);
+            // Check if all were revealed already and play sound/set state
+            setRevealedResults((prev) => {
+              if (prev.every((r) => r !== null)) {
+                const totalCorrect = prev.filter((r) => r === true).length;
+                const isPerfect = totalCorrect === sequence.length;
+
+                // Update Overlay for final frame
+                setOverlayText(`ROUND ${currentRound} COMPLETE\\nSCORE: ${totalCorrect}/${sequence.length}`);
+
+                setTimeout(() => {
+                  playOneShot(isPerfect ? "win" : "lose");
+                  setRobotState(isPerfect ? "happy" : "sad");
+
+                  // Stop recording shortly after result is shown to capture the reaction
+                  setTimeout(() => {
+                    stopRecording();
+                  }, 4000);
+                }, 500);
+              }
+              return prev;
+            });
           }
-        }, 150);
+        }, 75);
         gameTimersRef.current.push(interval);
         return () => clearInterval(interval);
       }
@@ -370,49 +393,6 @@ const App: React.FC = () => {
     aiResults, // Added aiResults to dependency to ensure the initialResults snapshot is fresh
   ]);
 
-  // Watch for NEW AI results coming in while on score screen
-  useEffect(() => {
-    if (status === GameStatus.RESULT && judgementMode === "AI") {
-      aiResults.forEach((res, idx) => {
-        // Use loose inequality to catch both null and undefined
-        if (res != null) {
-          setRevealedResults((prev) => {
-            // If revealedResults hasn't been initialized yet to the correct length, skip
-            if (prev.length <= idx) return prev;
-            
-            // If already revealed, skip
-            if (prev[idx] !== null) return prev;
-
-            const next = [...prev];
-            next[idx] = res;
-            
-            if (res === true) playSuccessSound();
-            else if (res === false) playFailSound();
-
-            // Check if this finalizes the sequence to play win/lose sound
-            if (next.every((r) => r !== null)) {
-              const totalCorrect = next.filter((r) => r === true).length;
-              const isPerfect = totalCorrect === sequence.length;
-              setTimeout(() => {
-                playOneShot(isPerfect ? "win" : "lose");
-                setRobotState(isPerfect ? "happy" : "sad");
-              }, 500);
-            }
-            return next;
-          });
-        }
-      });
-    }
-  }, [
-    aiResults,
-    status,
-    judgementMode,
-    sequence.length,
-    playSuccessSound,
-    playFailSound,
-    // Note: removed revealedResults from dependency to avoid infinite loops,
-    // we use functional updates to get the latest state anyway.
-  ]);
 
   // Generate random sequence based on difficulty or infinite stats
   const generateSequence = useCallback(
@@ -424,7 +404,7 @@ const App: React.FC = () => {
       for (let i = 0; i < length; i++) {
         let nextNum;
         do {
-          nextNum = Math.floor(Math.random() * 5) + 1;
+          nextNum = Math.floor(Math.random() * 6); // 0-5
         } while (i > 0 && nextNum === newSequence[i - 1]);
         newSequence.push(nextNum);
       }
@@ -532,7 +512,7 @@ const App: React.FC = () => {
       if (currentSourceRef.current) {
         try {
           currentSourceRef.current.stop();
-        } catch (e) {}
+        } catch (e) { }
         currentSourceRef.current = null;
       }
 
@@ -587,34 +567,18 @@ const App: React.FC = () => {
     if (currentSourceRef.current) {
       try {
         currentSourceRef.current.stop();
-      } catch (e) {}
+      } catch (e) { }
       currentSourceRef.current = null;
     }
     currentGainRef.current = null;
   }, []);
-
-  // Handle "Enter Studio" button click
-  const handleEnterStudio = useCallback(async () => {
-    if (!isAssetsReady) return;
-
-    // 1. Resume Context immediately on user click
-    const ctx = audioCtxRef.current;
-    if (ctx && (ctx.state === "suspended" || ctx.state === "interrupted")) {
-      await ctx.resume();
-    }
-
-    // 2. Play intro music immediately inside the same click handler
-    playTrack("intro");
-
-    setStatus(GameStatus.MENU);
-  }, [isAssetsReady, playTrack]);
 
   // Effect to switch music based on state (except Playing, which is handled in startGame)
   useEffect(() => {
     if (!audioCtxRef.current) return;
 
     // Removed GameStatus.MENU auto-play to prevent redundant triggers
-    // we now trigger it manually in handleEnterStudio and startGame
+    // we now trigger it manually in handleStartGame and startGame
     if (status === GameStatus.RESULT || status === GameStatus.ANALYZING) {
       playTrack("score");
     }
@@ -645,6 +609,29 @@ const App: React.FC = () => {
     gain.gain.cancelScheduledValues(now);
     gain.gain.setValueAtTime(isMuted ? 0 : targetVolume, now);
   }, [isMuted, status]);
+
+  // Handle "Enter Studio" button click
+  const handleEnterStudio = useCallback(async () => {
+    if (!isAssetsReady) return;
+
+    // 1. Resume Context immediately on user click
+    const ctx = audioCtxRef.current;
+    if (ctx && (ctx.state === "suspended" || ctx.state === "interrupted")) {
+      await ctx.resume();
+    }
+
+    // 2. Start game directly
+    startGame();
+  }, [isAssetsReady]); // 'startGame' omitted from deps to avoid circular if not hoisted
+
+  // Effect to switch music based on state
+  useEffect(() => {
+    if (!audioCtxRef.current) return;
+
+    if (status === GameStatus.RESULT || status === GameStatus.ANALYZING) {
+      playTrack("score");
+    }
+  }, [status, playTrack]);
 
   // --- GAME LOOP ---
   const startGame = async (
@@ -677,6 +664,10 @@ const App: React.FC = () => {
     hasHitCurrentBeatRef.current = false;
 
     // Calculate timing based on difficulty's playback rate
+
+    // Start Video Recording
+    startRecording();
+    setOverlayText(`ROUND ${isInfiniteMode ? currentRound : "?"} | ${targetDifficulty}`);
     const targetBPM =
       bpmOverride ||
       (isInfiniteMode ? currentBpm : DIFFICULTIES[targetDifficulty].bpm);
@@ -707,6 +698,24 @@ const App: React.FC = () => {
       startCountdown(newSequence, currentSessionId);
     }
   };
+
+  // Handle "Start Game" button click (merged from handleEnterStudio)
+  const handleStartGame = useCallback(async () => {
+    if (!isAssetsReady) return;
+
+    // 1. Resume Context immediately on user click
+    const ctx = audioCtxRef.current;
+    if (ctx && (ctx.state === "suspended" || ctx.state === "interrupted")) {
+      await ctx.resume();
+    }
+
+    // 2. Start game directly, bypassing MENU state
+    setIsInfiniteMode(true);
+    setCurrentRound(1);
+    setCurrentBpm(105);
+    setCurrentLength(8);
+    startGame(undefined, 105, 8);
+  }, [isAssetsReady, startGame]);
 
   // Separated countdown logic for cleaner code
   const startCountdown = (newSequence: number[], currentSessionId: number) => {
@@ -774,15 +783,15 @@ const App: React.FC = () => {
             const frame =
               videoRef.current && canvasRef.current
                 ? (() => {
-                    const canvas = canvasRef.current;
-                    const video = videoRef.current;
-                    const ctx = canvas.getContext("2d");
-                    if (ctx) {
-                      ctx.drawImage(video, 0, 0, 160, 120);
-                      return canvas.toDataURL("image/jpeg", 0.4);
-                    }
-                    return null;
-                  })()
+                  const canvas = canvasRef.current;
+                  const video = videoRef.current;
+                  const ctx = canvas.getContext("2d");
+                  if (ctx) {
+                    ctx.drawImage(video, 0, 0, 320, 240);
+                    return canvas.toDataURL("image/jpeg", 0.5);
+                  }
+                  return null;
+                })()
                 : null;
 
             if (frame) {
@@ -827,8 +836,7 @@ const App: React.FC = () => {
             setAiResults([...aiResultsRef.current]);
           }
 
-          // if (isHit) playSuccessSound();
-          // else playFailSound();
+          if (!isHit) playFailSound();
         }
 
         beat++;
@@ -880,7 +888,7 @@ const App: React.FC = () => {
 
       const prompt = `
         Analyze these 3 snaps of a player's hand. 
-        Target number of fingers: ${target}.
+        Target number of fingers: ${target} (Note: 0 means a closed fist or no fingers extended).
         Return JSON format: { "success": boolean, "detected_count": number[] }
         The 'detected_count' array must have exactly 3 numbers representing what you saw in each snapshot.
       `;
@@ -914,6 +922,8 @@ const App: React.FC = () => {
       // Update State for UI
       setAiResults([...aiResultsRef.current]);
       setAiDetectedCounts([...aiDetectedCountsRef.current]);
+
+      if (!isSuccess) playFailSound();
     } catch (e) {
       console.error(`AI Beat ${beatIdx} failed:`, e);
       // Fail silently, analyzeGame will use local fallback for missing results
@@ -934,13 +944,10 @@ const App: React.FC = () => {
     const localScore = Math.round((localCorrectCount / seq.length) * 100);
 
     // If LOCAL mode is selected, skip AI analysis and show results immediately
+    // If LOCAL mode is selected, show results immediately
     if (judgementMode === "LOCAL") {
       const isPerfect = localScore === 100;
-      const finalResults = localResults.map((r) => r === true);
-      
-      // Ensure state and ref are fully synced for the reveal logic
-      aiResultsRef.current = finalResults;
-      setAiResults(finalResults);
+      const syncResults = localResults.map((r) => r === true);
 
       setRobotState("average");
       setResultData({
@@ -948,24 +955,27 @@ const App: React.FC = () => {
         correct_count: localCorrectCount,
         score: localScore,
         feedback: "Local Tracking complete. Ultra-fast feedback active!",
-        detailed_results: finalResults,
+        detailed_results: syncResults,
         detected_counts: aiDetectedCountsRef.current.flat(),
       });
+
+      // Sync results immediately
+      aiResultsRef.current = syncResults;
+      setAiResults(syncResults);
+
+      // Move to result screen
       setStatus(GameStatus.RESULT);
       return;
     }
 
+    // AI Mode
     try {
       // 1. Wait for AT LEAST ONE AI result to finish before showing result screen
-      // This makes the transition feel instant
       let attempts = 0;
       const maxAttempts = 20; // ~5 seconds max wait for the FIRST result
       let hasOneResult = false;
 
-      while (attempts < maxAttempts) {
-        // Exit early if session changed
-        if (sessionId !== gameIdRef.current) return;
-
+      while (attempts < 30) {
         const currentCount = aiResultsRef.current.filter(
           (r) => r !== null
         ).length;
@@ -975,32 +985,25 @@ const App: React.FC = () => {
           setStatus(GameStatus.RESULT);
         }
 
-        // If all are done, finish pooling
         if (currentCount >= seq.length) break;
-
-        await new Promise((r) => setTimeout(r, 250));
+        await new Promise((r) => setTimeout(r, 200));
         attempts++;
       }
 
       // Session Check
       if (sessionId !== gameIdRef.current) return;
 
-      // 2. Aggregate final data from REF once all is settled (or timeout)
-      // FIX: If some AI results are still null or undefined after timeout, fallback to local results for those specific beats
-      const finalAiResults = Array.from({ length: seq.length }, (_, idx) => {
-        const res = aiResultsRef.current[idx];
-        if (typeof res === "boolean") return res;
-        return localResults[idx] === true;
+      // 2. Fill any missing AI results with local judgments (Failover)
+      const finalAiResults = [...aiResultsRef.current].slice(0, seq.length);
+      const syncedResults: boolean[] = finalAiResults.map((r, i) => {
+        if (r !== null) return r;
+        return localResults[i] === true; // local fallback
       });
-      
-      // Sync back to ref and state so UI shows the fallback results
-      aiResultsRef.current = finalAiResults;
-      setAiResults(finalAiResults);
 
-      const correct_count = finalAiResults.filter((r) => r === true).length;
+      const correct_count = syncedResults.filter((r) => r === true).length;
       const score = Math.round((correct_count / seq.length) * 100);
-
       const isPerfect = score === 100;
+
       setResultData({
         success: isPerfect,
         correct_count,
@@ -1008,21 +1011,18 @@ const App: React.FC = () => {
         feedback: isPerfect
           ? "Perfect rhythm!"
           : "AI verified your performance.",
-        detailed_results: finalAiResults,
+        detailed_results: syncedResults,
         detected_counts: aiDetectedCountsRef.current.flat(),
       });
-      setRobotState("average");
-      
-      // Ensure we are in RESULT state if timeout happened before first result
-      if (status !== GameStatus.RESULT) setStatus(GameStatus.RESULT);
 
+      // Crucial: Update aiResults state so the reveal loop can finish
+      setAiResults(syncedResults);
+      aiResultsRef.current = syncedResults;
+
+      setRobotState("average");
+      setStatus(GameStatus.RESULT);
     } catch (error) {
       console.error("Gemini Analysis Failed or Timeout", error);
-      
-      // Session Check
-      if (sessionId !== gameIdRef.current) return;
-
-      // Fallback to local results
       const isPerfect = localScore === 100;
       setRobotState(isPerfect ? "happy" : "sad");
       setResultData({
@@ -1033,7 +1033,6 @@ const App: React.FC = () => {
         detailed_results: localResults.map((r) => r === true),
         detected_counts: aiDetectedCountsRef.current.flat(),
       });
-      // Also update aiResults to show the color badges
       setAiResults(localResults.map((r) => r === true));
       setStatus(GameStatus.RESULT);
     }
@@ -1070,73 +1069,22 @@ const App: React.FC = () => {
         landmarksRef={landmarksRef}
         isCameraReady={isCameraReady}
         showFingerVector={
-          showFingerVector ||
-          status === GameStatus.MENU ||
-          status === GameStatus.LOADING
+          status === GameStatus.LOADING || status === GameStatus.RESULT
         }
       />
 
       {/* Minimal Overlay Shadow (Top only for visibility) */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-transparent pointer-events-none" />
+      <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-black/40 to-transparent pointer-events-none z-10" />
 
-      {/* Top Controls */}
-      <div className="absolute top-4 right-4 md:top-6 md:right-6 z-50 flex gap-2 md:gap-3">
-        <button
-          onClick={() => setIsSettingsOpen(true)}
-          className="p-3 bg-white/10 rounded-full hover:bg-white/20 active:bg-white/30 transition-all pointer-events-auto touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-        >
-          <Settings size={20} className="md:w-6 md:h-6" />
-        </button>
-        <button
-          onClick={() => setIsMuted(!isMuted)}
-          className="p-3 bg-white/10 rounded-full hover:bg-white/20 active:bg-white/30 transition-all pointer-events-auto touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-        >
-          {isMuted ? (
-            <VolumeX size={20} className="md:w-6 md:h-6" />
-          ) : (
-            <Volume2 size={20} className="md:w-6 md:h-6" />
-          )}
-        </button>
-      </div>
-
-      {/* DETECTED NUMBER / FINGER COUNT */}
-      {isCameraReady &&
-        status !== GameStatus.RESULT &&
-        status !== GameStatus.LOADING && (
-          <FingerCountDisplay fingerCount={fingerCount} />
-        )}
 
       {/* Main Content Container */}
       <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-3 md:p-4">
-        {/* --- LOADING STATE (Entry Screen) --- */}
+        {/* --- LOADING STATE (Viral Challenge Entry Screen) --- */}
         {status === GameStatus.LOADING && (
-          <div className="bg-black/80 p-8 rounded-3xl max-w-md w-full mx-4 flex flex-col gap-6 animate-pop border border-white/20">
-            {/* Title */}
-            <div className="text-center">
-              <h1 className="text-4xl font-black text-white mb-2 tracking-tighter shadow-sm">
-                FINGER RHYTHM
-              </h1>
-              <p className="text-white/40 text-sm font-bold uppercase tracking-widest">
-                {isAssetsReady ? "SYSTEM READY" : "LOADING ASSETS..."}
-              </p>
-            </div>
-
-            {/* Enter Button */}
-            <button
-              onClick={handleEnterStudio}
-              disabled={!isAssetsReady}
-              className={`
-                w-full py-4 rounded-xl text-lg font-black uppercase tracking-widest transition-all
-                ${
-                  isAssetsReady
-                    ? "bg-white text-black hover:bg-gray-200 active:scale-95"
-                    : "bg-white/10 text-white/30 cursor-not-allowed"
-                }
-              `}
-            >
-              {isAssetsReady ? "ENTER" : "LOADING..."}
-            </button>
-          </div>
+          <StartScreen 
+            onStart={handleStartGame} 
+            isAssetsReady={isAssetsReady} 
+          />
         )}
 
         {/* --- MENU STATE --- */}
@@ -1159,11 +1107,10 @@ const App: React.FC = () => {
 
                 <button
                   onClick={() => {
-                    setIsInfiniteMode(true);
                     setCurrentRound(1);
-                    setCurrentBpm(100);
-                    setCurrentLength(5);
-                    startGame();
+                    setCurrentBpm(105);
+                    setCurrentLength(8);
+                    startGame(undefined, 105, 8);
                   }}
                   className="group relative px-12 py-5 rounded-full bg-white text-black font-black text-2xl tracking-widest active:scale-95 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
                 >
@@ -1174,7 +1121,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* --- PLAYING STATE --- */}
+        {/* --- PLAYING / ANALYZING STATE --- */}
         {(status === GameStatus.PLAYING || status === GameStatus.ANALYZING) && (
           <div className="w-full h-full flex flex-col justify-between py-6 md:py-12">
             {/* Top Center Round Info */}
@@ -1203,17 +1150,61 @@ const App: React.FC = () => {
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-full z-40 pointer-events-none">
               {/* Active Sequence */}
               {status === GameStatus.PLAYING && (
-                <SequenceDisplay
-                  sequence={sequence}
-                  currentBeat={currentBeat}
-                  countdown={countdown}
-                />
+                <div
+                  className={`flex flex-col items-center select-none animate-pop w-full px-4 transition-opacity duration-500 ${countdown !== null ? "opacity-20" : "opacity-100"
+                    }`}
+                >
+                  <div
+                    className={`flex flex-col items-center gap-2 md:gap-4 transition-all duration-500`}
+                  >
+                    {(() => {
+                      const isLong = sequence.length > 12;
+                      const midPoint = isLong
+                        ? Math.ceil(sequence.length / 2)
+                        : sequence.length;
+
+                      const renderRow = (nums: number[], startIdx: number) => (
+                        <div className="flex flex-wrap justify-center items-center font-bold text-4xl md:text-6xl lg:text-7xl text-white drop-shadow-[0_2px_2px_rgba(0,0,0,1)] gap-0">
+                          {nums.map((num, i) => {
+                            const globalIdx = i + startIdx;
+                            const isCurrent = globalIdx === currentBeat;
+
+                            let displayClass =
+                              "transition-all duration-300 ease-out inline-block";
+                            if (isCurrent && countdown === null) {
+                              displayClass +=
+                                " text-yellow-400 scale-[1.6] drop-shadow-[0_0_30px_rgba(250,204,21,0.6)] z-10 font-black";
+                            } else {
+                              displayClass += " text-white opacity-100";
+                            }
+
+                            return (
+                              <React.Fragment key={globalIdx}>
+                                {i > 0 && (
+                                  <span className="mx-0.5 opacity-80">-</span>
+                                )}
+                                <span className={displayClass}>{num}</span>
+                              </React.Fragment>
+                            );
+                          })}
+                        </div>
+                      );
+
+                      return (
+                        <>
+                          {renderRow(sequence.slice(0, midPoint), 0)}
+                          {isLong &&
+                            renderRow(sequence.slice(midPoint), midPoint)}
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
               )}
 
               {/* Robot Analysis */}
               {status === GameStatus.ANALYZING && (
                 <div className="flex flex-col items-center gap-4 md:gap-6 animate-pop px-4">
-                  <Robot state="analyzing" />
                   <h2 className="text-2xl md:text-4xl font-black uppercase text-glow animate-pulse">
                     ANALYZING...
                   </h2>
@@ -1226,34 +1217,38 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* --- RESULT STATE --- */}
         {status === GameStatus.RESULT && (
           <div
-            className="flex flex-col items-center gap-4 md:gap-6 w-full max-w-4xl animate-pop px-3 md:px-4 overflow-y-auto pb-4"
+            className="flex flex-col items-center gap-4 md:gap-6 w-full max-w-4xl animate-pop px-3 md:px-4 overflow-y-auto no-scrollbar pb-4 max-h-full relative"
             style={{
               paddingBottom: 98,
             }}
           >
-            <Robot state={robotState} />
-
             {(() => {
               const currentCorrect = revealedResults.filter(
                 (r) => r === true
               ).length;
               const isFinished =
                 revealedResults.length > 0 &&
-                revealedResults.every((r) => r != null);
+                revealedResults.every((r) => r !== null);
+
+              if (!isFinished) return null;
 
               return (
-                <div className="flex flex-col items-center">
-                  <div className="text-white/40 text-xs md:text-sm font-black uppercase tracking-widest mb-1">
-                    ROUND {currentRound} COMPLETE
+                <div className="flex flex-col items-center animate-slide-up-pop">
+                  <Robot state={robotState} />
+                  <div className="mt-8 mb-4 relative group">
+                    <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 rounded-lg blur opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200 animate-tilt"></div>
+                    <div className="relative px-8 py-4 bg-black/50 backdrop-blur-xl rounded-lg border border-white/20 shadow-2xl flex items-center gap-4">
+                      <span className="text-3xl md:text-5xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-blue-100 to-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] uppercase tracking-tighter">
+                        ROUND {currentRound}
+                      </span>
+                      <span className="text-xl md:text-3xl font-bold text-white/90 uppercase tracking-[0.2em] border-l-2 border-white/30 pl-4">
+                        COMPLETE
+                      </span>
+                    </div>
                   </div>
-                  <h1
-                    className={`text-6xl md:text-8xl font-black text-white drop-shadow-[0_4px_4px_rgba(0,0,0,1)] ${
-                      !isFinished ? "animate-pulse" : ""
-                    }`}
-                  >
+                  <h1 className="text-6xl md:text-8xl font-black text-white drop-shadow-[0_4px_4px_rgba(0,0,0,1)]">
                     {currentCorrect} / {sequence.length}
                   </h1>
                 </div>
@@ -1284,9 +1279,22 @@ const App: React.FC = () => {
                   );
                 }
 
-                if (isPerfect || isDev) {
+                if (isFinished && !isPerfect) {
                   return (
-                    <div className="flex flex-col items-center gap-4">
+                    <div className="flex flex-col items-center gap-4 w-full">
+                      <button
+                        onClick={() => startGame()}
+                        className="animate-slide-up-pop px-12 py-5 bg-red-600 text-white font-black uppercase tracking-widest text-xl hover:bg-red-700 active:scale-95 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-2xl w-full min-w-[280px]"
+                      >
+                        TRY AGAIN
+                      </button>
+                    </div>
+                  );
+                }
+
+                if (isFinished && isPerfect) {
+                  return (
+                    <div className="flex flex-col items-center gap-4 w-full">
                       {isInfiniteMode ? (
                         <button
                           onClick={() => {
@@ -1297,10 +1305,9 @@ const App: React.FC = () => {
                             setCurrentRound((r) => r + 1);
                             startGame(undefined, nextBpm, nextLength);
                           }}
-                          className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-lg w-full min-w-[280px]"
+                          className="px-12 py-5 bg-green-600 text-white font-black uppercase tracking-widest text-xl hover:bg-green-700 hover:scale-105 active:scale-95 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-2xl w-full min-w-[280px]"
                         >
                           NEXT ROUND
-                          {/* {currentRound + 1} */}
                         </button>
                       ) : (
                         <button
@@ -1315,19 +1322,18 @@ const App: React.FC = () => {
                               setDifficulty(nextDifficulty);
                               startGame(nextDifficulty);
                             } else {
-                              // Reset to beginning when finished
                               setDifficulty("EASY");
-                              setStatus(GameStatus.MENU);
+                              setStatus(GameStatus.LOADING);
                             }
                           }}
-                          className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-lg w-full min-w-[280px]"
+                          className="px-12 py-5 bg-green-600 text-white font-black uppercase tracking-widest text-xl hover:bg-green-700 hover:scale-105 active:scale-95 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-2xl w-full min-w-[280px]"
                         >
                           {difficulty === "NIGHTMARE" ? "FINISH" : "NEXT ROUND"}
                         </button>
                       )}
                       <button
                         onClick={() => startGame()}
-                        className="text-white text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] active:opacity-80 md:hover:opacity-80 transition-opacity underline underline-offset-8 min-h-[64px] touch-manipulation"
+                        className="text-white text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] opacity-60 hover:opacity-100 transition-opacity underline underline-offset-8"
                       >
                         Replay Level
                       </button>
@@ -1335,31 +1341,37 @@ const App: React.FC = () => {
                   );
                 }
 
-                return (
-                  <div className="flex flex-col items-center gap-4">
-                    <button
-                      onClick={() => startGame()}
-                      className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-lg w-full min-w-[280px]"
-                    >
-                      REPLAY LEVEL
-                    </button>
-                    <p className="text-red-500 font-bold uppercase tracking-widest text-[10px] animate-pulse">
-                      Score 100% to unlock next level
-                    </p>
-                  </div>
-                );
+                return null;
               })()}
+
+              {/* Share / Save Video Button */}
+              {videoBlob && (
+                <button
+                  onClick={() => {
+                    const url = URL.createObjectURL(videoBlob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `neon-rhythm-round-${currentRound}.mp4`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="mt-6 px-8 py-3 bg-blue-600 text-white font-black uppercase tracking-widest text-sm md:text-base hover:bg-blue-700 hover:scale-105 transition-all shadow-lg rounded-full flex items-center gap-2"
+                >
+                  <span>DOWNLOAD REPLAY</span>
+                  <span className="text-xl">📹</span>
+                </button>
+              )}
 
               <button
                 onClick={() => {
                   setDifficulty("EASY");
                   setIsInfiniteMode(true);
                   setCurrentRound(1);
-                  setCurrentBpm(100);
-                  setCurrentLength(5);
-                  setStatus(GameStatus.MENU);
+                  setCurrentBpm(105);
+                  setCurrentLength(8);
+                  setStatus(GameStatus.LOADING);
                 }}
-                className="text-white text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] active:opacity-80 md:hover:opacity-80 transition-opacity underline underline-offset-8 min-h-[64px] touch-manipulation"
+                className="text-white/40 text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] hover:text-white transition-colors mt-4"
               >
                 Back to Menu
               </button>
@@ -1367,59 +1379,31 @@ const App: React.FC = () => {
 
             {/* Detailed Results Panel */}
             <div className="bg-black/60 p-6 rounded-3xl border border-white/10 w-full backdrop-blur-md">
-              <div className="text-center text-xs font-black text-white/40 mb-6 tracking-[0.3em] uppercase">
-                PERFORMANCE LOG
-              </div>
 
-              {/* Grid of Results */}
-              <div className="flex gap-1.5 md:gap-2 mb-4 md:mb-6 justify-center flex-wrap">
-                {sequence.map((target, idx) => {
-                  const res = revealedResults[idx];
-                  const isPending = res == null;
+              {/* Results Sequence Overlay (Colored based on results) */}
+              <div className="flex flex-wrap justify-center items-center font-bold text-4xl md:text-6xl lg:text-7xl text-white drop-shadow-[0_2px_2px_rgba(0,0,0,1)] gap-0 mb-8 md:mb-12">
+                {sequence.map((num, i) => {
+                  const res = revealedResults[i];
+                  const isMiss = res === false;
+                  const isPending = res === null;
 
-                  const colorClass = isPending
-                    ? "border-white/20 bg-white/5 animate-pulse"
-                    : res === true
-                    ? "border-green-500 bg-green-500/20"
-                    : "border-red-500 bg-red-500/20";
-
-                  const textClass = isPending
-                    ? "text-white/20"
-                    : res === true
-                    ? "text-green-500"
-                    : "text-red-500";
-
-                  const label = isPending
-                    ? "..."
-                    : res === true
-                    ? "HIT"
-                    : "MISS";
+                  let colorClass = "text-white";
+                  if (!isPending) {
+                    if (isMiss) colorClass = "text-red-500 drop-shadow-[0_0_15px_rgba(239,68,68,0.4)]";
+                    else colorClass = "text-white"; // Hits remain white as requested
+                  }
 
                   return (
-                    <div
-                      key={idx}
-                      className={`w-14 h-20 md:w-16 md:h-24 border-2 ${colorClass} rounded-lg flex flex-col items-center justify-center transition-all`}
-                    >
-                      <span
-                        className={`text-2xl md:text-4xl font-black ${textClass} mb-0.5 md:mb-1`}
-                      >
-                        {target}
+                    <React.Fragment key={i}>
+                      {i > 0 && (
+                        <span className="mx-0.5 opacity-80 text-white">-</span>
+                      )}
+                      <span className={`transition-all duration-300 ${colorClass}`}>
+                        {num}
                       </span>
-                      <span
-                        className={`text-[9px] md:text-xs uppercase font-black tracking-wider ${textClass}`}
-                      >
-                        {label}
-                      </span>
-                    </div>
+                    </React.Fragment>
                   );
                 })}
-              </div>
-
-              {/* AI Feedback Quote */}
-              <div className="text-base md:text-xl italic mb-3 md:mb-4 text-center px-2">
-                {resultData
-                  ? `"${resultData.feedback}"`
-                  : "Calculating final judgment..."}
               </div>
 
               {/* Captured Frames Grid */}
@@ -1449,14 +1433,14 @@ const App: React.FC = () => {
                   const colorClass = isPending
                     ? "border-white/10"
                     : res === true
-                    ? "border-green-500"
-                    : "border-red-500";
+                      ? "border-green-500"
+                      : "border-red-500";
 
                   const badgeColor = isPending
                     ? "bg-white/10"
                     : res === true
-                    ? "bg-green-600"
-                    : "bg-red-600";
+                      ? "bg-green-600"
+                      : "bg-red-600";
 
                   return (
                     <div
@@ -1466,9 +1450,8 @@ const App: React.FC = () => {
                       <img
                         src={frame}
                         alt={`beat ${beatIdx + 1}`}
-                        className={`w-full h-full object-cover transition-opacity ${
-                          isPending ? "opacity-30 blur-[2px]" : "opacity-90"
-                        } group-hover:opacity-100`}
+                        className={`w-full h-full object-cover transition-opacity ${isPending ? "opacity-30 blur-[2px]" : "opacity-90"
+                          } group-hover:opacity-100`}
                       />
                       <div className="absolute top-1 right-1 bg-black/40 backdrop-blur-sm rounded text-[8px] md:text-[10px] text-white/50 px-1.5 py-0.5 font-mono border border-white/10">
                         {isPending ? "JUDGING..." : `BEAT ${beatIdx + 1}`}
@@ -1476,9 +1459,7 @@ const App: React.FC = () => {
                       <div
                         className={`absolute bottom-0 w-full ${badgeColor} py-1 flex flex-col items-center shadow-[0_-2px_10_rgba(0,0,0,0.3)] transition-colors`}
                       >
-                        <span className="text-[10px] md:text-xs font-black text-white uppercase tracking-tighter">
-                          TAR: {targetCount}
-                        </span>
+
                         <span className="text-[8px] md:text-[10px] font-bold text-white/90 uppercase tracking-wider">
                           SAW: {isPending ? "?" : detectedVal}
                         </span>
@@ -1493,16 +1474,6 @@ const App: React.FC = () => {
       </div>
 
       {/* MODALS */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        showFingerVector={showFingerVector}
-        setShowFingerVector={setShowFingerVector}
-        judgementMode={judgementMode}
-        setJudgementMode={setJudgementMode}
-        videoOpacity={videoOpacity}
-        setVideoOpacity={setVideoOpacity}
-      />
     </div>
   );
 };
