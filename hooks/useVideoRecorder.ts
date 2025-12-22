@@ -82,8 +82,8 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>) =>
         const stream = canvas.captureStream(30); // 30 FPS
 
         // Attempt MP4, fall back to WebM
-        const mimeType = MediaRecorder.isTypeSupported("video/web;codecs=h264")
-            ? "video/mp4"
+        const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=h264")
+            ? "video/webm;codecs=h264"
             : "video/webm";
 
         try {
@@ -99,7 +99,7 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>) =>
                 if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
             };
 
-            recorder.start();
+            recorder.start(1000); // Collect data every second to ensure ondataavailable fires
             mediaRecorderRef.current = recorder;
         } catch (e) {
             console.error("Recording failed to start", e);
