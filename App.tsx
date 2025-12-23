@@ -57,6 +57,7 @@ const App: React.FC = () => {
   // Memory & Timer Management
   const gameTimersRef = useRef<(number | NodeJS.Timeout)[]>([]);
   const gameIdRef = useRef(0);
+  const sessionIdRef = useRef(0);
 
   // Tracking
   const { isCameraReady, fingerCount, landmarksRef } = useMediaPipe(videoRef);
@@ -543,10 +544,15 @@ const App: React.FC = () => {
 
   // Generic Play Track Function (mute only affects background music)
   // startOffset: time in seconds to start playback from (for skipping intros)
+  // startTime: absolute AudioContext time to start playback (scheduling)
   const playTrack = useCallback(
-    (type: "intro" | "game" | "score", startOffset: number = 0) => {
+    (
+      type: "intro" | "game" | "score",
+      startOffset: number = 0,
+      startTime?: number
+    ) => {
       const ctx = audioCtxRef.current;
-      if (!ctx) return;
+      if (!ctx) return 0;
 
       // Stop currently playing track
       if (currentSourceRef.current) {
@@ -595,12 +601,19 @@ const App: React.FC = () => {
 
         source.connect(gain);
         gain.connect(ctx.destination);
-        source.start(0, offset);
+
+        // If no startTime provided, start after a tiny buffer for stability
+        const actualStartTime = startTime || ctx.currentTime + 0.05;
+        source.start(actualStartTime, offset);
+
         currentSourceRef.current = source;
         currentGainRef.current = gain;
+
+        return actualStartTime;
       }
+      return 0;
     },
-    [isMuted, difficulty]
+    [isMuted, difficulty, isInfiniteMode, currentBpm]
   );
 
   const stopMusic = useCallback(() => {
@@ -703,9 +716,7 @@ const App: React.FC = () => {
     setCurrentBeat(-1);
     hasHitCurrentBeatRef.current = false;
 
-    // Calculate timing based on difficulty's playback rate
-
-    // Start Video Recording
+    // Start Video Recording immediately to warm up hardware
     startRecording();
 
     const targetBPM =
@@ -713,30 +724,36 @@ const App: React.FC = () => {
       (isInfiniteMode ? currentBpm : DIFFICULTIES[targetDifficulty].bpm);
     const playbackRate = targetBPM / BASE_BPM;
 
-    // Time until first beat at current playback rate
+    // Time until first beat in the audio file
     const timeToFirstBeat = FIRST_BEAT_TIME_SEC / playbackRate;
-
     const countdownDuration = 3; // 3 seconds countdown
 
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+
+    // PRECISE SCHEDULING: 
+    // We want the countdown to end exactly when the first beat hits.
+    // We'll schedule the music to start at a specific time in the future.
+    
+    let musicStartTime = 0;
+    let countdownDelay = 0;
+
     if (timeToFirstBeat >= countdownDuration) {
-      // First beat comes after countdown - start music now, it will sync
-      playTrack("game", 0);
-
-      // Wait for the difference, then start countdown
-      const waitTime = (timeToFirstBeat - countdownDuration) * 1000;
-      const timerId = setTimeout(() => {
-        startCountdown(newSequence, currentSessionId);
-      }, waitTime);
-      gameTimersRef.current.push(timerId);
+      // Music starts, then countdown starts after a delay
+      // To be safe, we'll start the music 200ms from now
+      musicStartTime = playTrack("game", 0, ctx.currentTime + 0.2);
+      countdownDelay = (timeToFirstBeat - countdownDuration) * 1000;
     } else {
-      // First beat comes before countdown ends - skip intro
-      // Start music from a point so first beat aligns with countdown end
-      const skipAmount = FIRST_BEAT_TIME_SEC; // Skip the intro
-      playTrack("game", skipAmount);
-
-      // Start countdown immediately
-      startCountdown(newSequence, currentSessionId);
+      // Countdown starts now, music starts mid-countdown with an offset
+      musicStartTime = playTrack("game", FIRST_BEAT_TIME_SEC, ctx.currentTime + 0.2);
+      // Wait for countdown to finish, then sync with music
     }
+
+    // Start countdown coordination
+    const timerId = setTimeout(() => {
+      startCountdown(newSequence, currentSessionId, musicStartTime, playbackRate);
+    }, Math.max(0, countdownDelay));
+    gameTimersRef.current.push(timerId);
   };
 
   // Handle "Start Game" button click (merged from handleEnterStudio)
@@ -758,7 +775,12 @@ const App: React.FC = () => {
   }, [isAssetsReady, startGame]);
 
   // Separated countdown logic for cleaner code
-  const startCountdown = (newSequence: number[], currentSessionId: number) => {
+  const startCountdown = (
+    newSequence: number[],
+    currentSessionId: number,
+    musicStartTime: number,
+    playbackRate: number
+  ) => {
     let count = 3;
     setCountdown(count);
     playCountdownBeep(count);
@@ -775,160 +797,168 @@ const App: React.FC = () => {
         clearInterval(timerId);
         setCountdown(null);
         // Start sequence immediately - synced with first beat!
-        runSequence(newSequence, currentSessionId);
+        runSequence(newSequence, currentSessionId, musicStartTime, playbackRate);
       }
     }, 1000);
     gameTimersRef.current.push(timerId);
   };
 
-  const runSequence = (seq: number[], currentSessionId: number) => {
-    // playMusic(); // Removed: Handled in startGame now
+  const runSequence = (
+    seq: number[],
+    currentSessionId: number,
+    musicStartTime: number,
+    playbackRate: number
+  ) => {
     const bpm = isInfiniteMode ? currentBpm : DIFFICULTIES[difficulty].bpm;
     const interval = 60000 / bpm;
-    let beat = 0; // Start at 0
-    const frames: string[] = [];
-    const results: (boolean | null)[] = new Array(seq.length).fill(null);
+    const intervalSec = 60 / bpm;
 
-    // Pre-set canvas size for optimized capture (Low res is enough for AI)
-    if (canvasRef.current) {
-      canvasRef.current.width = 160;
-      canvasRef.current.height = 120;
-    }
+    // The FIRST beat happens at this absolute AudioContext time
+    const firstBeatTime = musicStartTime + FIRST_BEAT_TIME_SEC / playbackRate;
+
+    const results: (boolean | null)[] = new Array(seq.length).fill(null);
+    const beatFrameGroups: (string | null)[][] = Array.from(
+      { length: seq.length },
+      () => [null, null, null]
+    );
+    const beatLocalCounts: (number | null)[][] = Array.from(
+      { length: seq.length },
+      () => [null, null, null]
+    );
+
+    // Snapshot offsets per beat: -300ms, 0ms (on the beat), +300ms
+    const snapshotOffsetsSec = [-0.3, 0, 0.3];
+
+    let nextBeatToSchedule = 0;
+    let nextJudgementBeat = 0;
+    const LOOKAHEAD_SEC = 0.5; // Look ahead 500ms
+    const SCHEDULER_INTERVAL_MS = 50;
 
     // Start the beat loop after audio offset for perfect sync
     const startBeatLoop = () => {
-      // Create groups to store frames and local counts chronologically for each beat
-      const beatFrameGroups: (string | null)[][] = Array.from(
-        { length: seq.length },
-        () => [null, null, null]
-      );
-      const beatLocalCounts: (number | null)[][] = Array.from(
-        { length: seq.length },
-        () => [null, null, null]
-      );
+      // Pre-set canvas size for optimized capture (Low res is enough for AI)
+      if (canvasRef.current) {
+        canvasRef.current.width = 160;
+        canvasRef.current.height = 120;
+      }
+      
+      const scheduler = () => {
+        const ctx = audioCtxRef.current;
+        if (!ctx || sessionIdRef.current !== currentSessionId) return;
 
-      // Snapshot offsets per beat: -300ms, 0ms (on the beat), +300ms
-      // Using 300ms instead of 500ms to ensure all snapshots complete before next beat judgement
-      const snapshotOffsets = [-300, 0, 300];
+        const currentTime = ctx.currentTime;
 
-      // Add a base offset for the first beat to ensure we have time to capture
-      // This shifts all snapshots forward so beat 0's first snapshot isn't at negative time
-      const firstBeatOffset = 350; // Ensures beat 0's -300ms snapshot happens at 50ms
+        // 1. SCHEDULE SNAPSHOTS AND UI HIGHLIGHTS
+        while (
+          nextBeatToSchedule < seq.length &&
+          firstBeatTime + nextBeatToSchedule * intervalSec <
+            currentTime + LOOKAHEAD_SEC
+        ) {
+          const beatIdx = nextBeatToSchedule;
+          const beatTime = firstBeatTime + beatIdx * intervalSec;
 
-      // Schedule ALL snapshots for the entire sequence immediately
-      seq.forEach((target, beatIdx) => {
-        const beatMoment = firstBeatOffset + beatIdx * interval;
+          // Schedule the UI highlight for this beat
+          const uiDelay = Math.max(0, (beatTime - currentTime) * 1000);
+          const uiTimer = setTimeout(() => {
+            setCurrentBeat(beatIdx);
+          }, uiDelay);
+          gameTimersRef.current.push(uiTimer);
 
-        snapshotOffsets.forEach((offsetMs, snapshotIdx) => {
-          const delay = beatMoment + offsetMs;
+          // Schedule the 3 snapshots for this beat
+          snapshotOffsetsSec.forEach((offset, snapIdx) => {
+            const snapTime = beatTime + offset;
+            const snapDelay = Math.max(0, (snapTime - currentTime) * 1000);
 
-          // Capture frame at the precise moment (using setTimeout from loop start)
-          const timerId = setTimeout(() => {
-            const currentLocalCount = fingerCountRef.current;
-            const frame =
-              videoRef.current && canvasRef.current
-                ? (() => {
-                    const canvas = canvasRef.current;
-                    const video = videoRef.current;
-                    const ctx = canvas.getContext("2d");
-                    if (ctx) {
-                      ctx.drawImage(video, 0, 0, 320, 240);
-                      return canvas.toDataURL("image/jpeg", 0.5);
-                    }
-                    return null;
-                  })()
-                : null;
+            const snapTimer = setTimeout(() => {
+              const currentLocalCount = fingerCountRef.current;
+              const frame =
+                videoRef.current && canvasRef.current
+                  ? (() => {
+                      const canvas = canvasRef.current;
+                      const video = videoRef.current;
+                      const ctxCanvas = canvas.getContext("2d");
+                      if (ctxCanvas) {
+                        // Use the pre-set small size
+                        ctxCanvas.drawImage(video, 0, 0, 160, 120);
+                        return canvas.toDataURL("image/jpeg", 0.4); // Slightly lower quality for speed
+                      }
+                      return null;
+                    })()
+                  : null;
 
-            if (frame) {
-              beatFrameGroups[beatIdx][snapshotIdx] = frame;
-              beatLocalCounts[beatIdx][snapshotIdx] = currentLocalCount;
+              if (frame) {
+                beatFrameGroups[beatIdx][snapIdx] = frame;
+                beatLocalCounts[beatIdx][snapIdx] = currentLocalCount;
 
-              // If this specific beat group is now complete
-              if (beatFrameGroups[beatIdx].every((f) => f !== null)) {
-                if (judgementMode === "AI") {
-                  analyzeBeat(
-                    beatIdx,
-                    beatFrameGroups[beatIdx] as string[],
-                    target,
-                    currentSessionId
-                  );
-                } else {
-                  // LOCAL mode: Populate detection counts from MediaPipe
-                  const localCounts = beatLocalCounts[beatIdx] as number[];
-                  aiDetectedCountsRef.current[beatIdx] = localCounts;
-                  setAiDetectedCounts([...aiDetectedCountsRef.current]);
+                // If this specific beat group is now complete
+                if (beatFrameGroups[beatIdx].every((f) => f !== null)) {
+                  if (judgementMode === "AI") {
+                    analyzeBeat(
+                      beatIdx,
+                      beatFrameGroups[beatIdx] as string[],
+                      seq[beatIdx],
+                      currentSessionId
+                    );
+                  } else {
+                    const localCounts = beatLocalCounts[beatIdx] as number[];
+                    aiDetectedCountsRef.current[beatIdx] = localCounts;
+                    // No need to trigger re-render on every snap in local mode
+                  }
                 }
               }
-            }
-          }, Math.max(0, delay));
-          gameTimersRef.current.push(timerId);
-        });
-      });
+            }, snapDelay);
+            gameTimersRef.current.push(snapTimer);
+          });
 
-      // Show first beat after the offset (aligned with when snapshots start)
-      const firstBeatTimer = setTimeout(() => {
-        setCurrentBeat(0);
-      }, firstBeatOffset);
-      gameTimersRef.current.push(firstBeatTimer);
+          nextBeatToSchedule++;
+        }
 
-      // Start the judgement loop after the first beat offset + one interval
-      // This ensures beat 0's snapshots are complete before we judge it
-      const startJudgementLoop = () => {
-        const loopId = setInterval(() => {
-          // JUDGE THE CURRENT BEAT (Local fallback logic)
-          if (beat >= 0 && beat < seq.length) {
-            const isHit = hasHitCurrentBeatRef.current;
-            results[beat] = isHit;
-            setLocalResults([...results]);
+        // 2. JUDGE BEATS (after they pass)
+        // Judgement happens half an interval after the beat to ensure all snapshots are in
+        while (
+          nextJudgementBeat < seq.length &&
+          firstBeatTime + nextJudgementBeat * intervalSec + 0.4 < currentTime
+        ) {
+          const beatIdx = nextJudgementBeat;
+          const isHit = hasHitCurrentBeatRef.current;
+          results[beatIdx] = isHit;
+          setLocalResults([...results]);
 
-            // In LOCAL mode, we still want to show results on the final screen
-            if (judgementMode === "LOCAL") {
-              aiResultsRef.current[beat] = isHit;
-              setAiResults([...aiResultsRef.current]);
-            }
-
-            if (!isHit) playFailSound();
+          if (judgementMode === "LOCAL") {
+            aiResultsRef.current[beatIdx] = isHit;
+            setAiResults([...aiResultsRef.current]);
           }
 
-          beat++;
-          hasHitCurrentBeatRef.current = false;
+          if (!isHit) playFailSound();
 
-          if (beat >= seq.length) {
-            clearInterval(loopId);
-            setCurrentBeat(-1); // Remove active highlight so last beat result color shows
-            // Wait for the absolute last +300ms snapshot plus a tiny safety margin
+          hasHitCurrentBeatRef.current = false;
+          nextJudgementBeat++;
+
+          if (nextJudgementBeat === seq.length) {
+            // Sequence complete
+            setCurrentBeat(-1);
             const finishTimer = setTimeout(() => {
               const flattened = beatFrameGroups
                 .flat()
                 .filter((f) => f !== null) as string[];
               setCapturedFrames(flattened);
               analyzeGame(seq, results, currentSessionId);
-            }, 400);
+            }, 500);
             gameTimersRef.current.push(finishTimer);
             return;
           }
+        }
 
-          setCurrentBeat(beat);
-        }, interval);
-        gameTimersRef.current.push(loopId);
+        const schedulerTimer = setTimeout(scheduler, SCHEDULER_INTERVAL_MS);
+        gameTimersRef.current.push(schedulerTimer);
       };
 
-      // Start judgement loop after first beat offset + one full interval
-      // This gives beat 0 a full interval to collect all snapshots before being judged
-      const judgementStartTimer = setTimeout(
-        startJudgementLoop,
-        firstBeatOffset + interval
-      );
-      gameTimersRef.current.push(judgementStartTimer);
+      scheduler();
     };
 
-    // Apply audio offset for sync - if 0, start immediately
-    if (AUDIO_OFFSET_MS > 0) {
-      const timerId = setTimeout(startBeatLoop, AUDIO_OFFSET_MS);
-      gameTimersRef.current.push(timerId);
-    } else {
-      startBeatLoop();
-    }
+    // Use a ref to track current session ID for the scheduler
+    sessionIdRef.current = currentSessionId;
+    startBeatLoop();
   };
 
   const analyzeBeat = async (
