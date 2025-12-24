@@ -33,6 +33,12 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>) =>
     }, []);
 
     const startRecording = useCallback(() => {
+        // If already recording, don't start a new session (prevents reset of chunksRef)
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+            console.log("Already recording, skipping start.");
+            return;
+        }
+
         console.log("Attempting to start recording...");
         if (!videoRef.current || !canvasRef.current) {
             console.error("Recording failed: Refs missing", { video: !!videoRef.current, canvas: !!canvasRef.current });

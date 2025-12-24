@@ -150,12 +150,31 @@ const App: React.FC = () => {
     countdown,
   ]);
 
-  // Stop recording immediately when entering Result state
+  // Stop recording ONLY when the game is over (user loses) or back to menu
   useEffect(() => {
-    if (status === GameStatus.RESULT && isRecording) {
+    const currentCorrect = revealedResults.filter((r) => r === true).length;
+    const isFinished =
+      (revealedResults.length > 0 && revealedResults.every((r) => r != null)) ||
+      (isInfiniteMode && revealedResults.some((r) => r === false));
+    const isPerfect = isFinished && currentCorrect === sequence.length;
+    const isGameOver = isFinished && !isPerfect;
+
+    // Stop recording on Game Over or if we return to the main loading/start screen
+    const shouldStop =
+      (status === GameStatus.RESULT && isGameOver) ||
+      (status === GameStatus.LOADING && isRecording);
+
+    if (shouldStop && isRecording) {
       stopRecording();
     }
-  }, [status, isRecording, stopRecording]);
+  }, [
+    status,
+    isRecording,
+    stopRecording,
+    revealedResults,
+    sequence.length,
+    isInfiniteMode,
+  ]);
 
   // Handle Round Transition Animation State
   useEffect(() => {
@@ -759,7 +778,8 @@ const App: React.FC = () => {
     setCurrentBeat(-1);
     hasHitCurrentBeatRef.current = false;
 
-    // Start Video Recording immediately to warm up hardware
+    // Start Video Recording immediately
+    // (Hook handles idempotency via mediaRecorderRef.current.state to allow multi-round videos)
     startRecording();
 
     const targetBPM =
@@ -1266,7 +1286,7 @@ const App: React.FC = () => {
         className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
         style={
           {
-            //   opacity: window.location.hostname === "localhost" ? 1 : videoOpacity,
+              opacity: window.location.hostname === "localhost" ? 0 : videoOpacity,
           }
         }
         playsInline
@@ -1564,7 +1584,7 @@ const App: React.FC = () => {
                         </div>
                       )}
 
-                      {!hideForInfiniteFail && videoBlob && (
+                      {videoBlob && (
                         <button
                           onClick={() => {
                             const url = URL.createObjectURL(videoBlob);
