@@ -12,6 +12,7 @@ interface WebcamPreviewProps {
   landmarksRef: React.MutableRefObject<NormalizedLandmark[] | null>;
   isCameraReady: boolean;
   showFingerVector?: boolean;
+  fingerCount: number;
 }
 
 const HAND_CONNECTIONS = [
@@ -47,6 +48,7 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
   landmarksRef,
   isCameraReady,
   showFingerVector = true,
+  fingerCount,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -129,6 +131,47 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
               ctx.arc(p.x, p.y, 4, 0, 2 * Math.PI);
               ctx.fill();
             }
+
+            // Draw Finger Count above the hand
+            if (fingerCount > 0) {
+              // Find the topmost point of the hand
+              let minY = Infinity;
+              let topX = 0;
+              for (const lm of landmarks) {
+                const p = getCoords(lm);
+                if (p.y < minY) {
+                  minY = p.y;
+                  topX = p.x;
+                }
+              }
+
+              // Draw Count Text
+              ctx.shadowColor = "rgba(251, 191, 36, 0.8)"; // yellow-400 glow
+              ctx.shadowBlur = 20;
+              ctx.fillStyle = "#fbbf24"; // yellow-400
+              ctx.strokeStyle = "black";
+              ctx.lineWidth = 6;
+              ctx.font = "900 100px Inter, system-ui, sans-serif";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "bottom";
+
+              const textY = minY - 20;
+              ctx.strokeText(fingerCount.toString(), topX, textY);
+              ctx.fillText(fingerCount.toString(), topX, textY);
+
+              // Reset shadow for the label
+              ctx.shadowBlur = 0;
+
+              // Add a small label
+              ctx.font = "900 14px Inter, system-ui, sans-serif";
+              ctx.fillStyle = "#fbbf24"; // yellow-400
+              ctx.strokeStyle = "black";
+              ctx.lineWidth = 3;
+              // Note: letterSpacing is not supported by all canvas implementations but fine to include
+              (ctx as any).letterSpacing = "2px";
+              ctx.strokeText("FINGERS", topX, textY - 100);
+              ctx.fillText("FINGERS", topX, textY - 100);
+            }
           }
         }
       }
@@ -139,7 +182,7 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
     return () => {
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
     };
-  }, [isCameraReady, videoRef, showFingerVector]);
+  }, [isCameraReady, videoRef, showFingerVector, fingerCount]);
 
   if (!isCameraReady) return null;
 

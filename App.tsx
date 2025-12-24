@@ -7,7 +7,7 @@ import React, { useRef, useState, useEffect, useCallback } from "react";
 import { useMediaPipe } from "./hooks/useMediaPipe";
 import Robot from "./components/Robot";
 import WebcamPreview from "./components/WebcamPreview";
-import FingerCountDisplay from "./components/FingerCountDisplay";
+
 import SequenceDisplay from "./components/SequenceDisplay";
 import SettingsModal from "./components/SettingsModal";
 import StartScreen from "./components/StartScreen";
@@ -45,6 +45,11 @@ const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
+  // Difficulty Tracking Refs (to avoid stale closures)
+  const infiniteBpmRef = useRef(95);
+  const infiniteLengthRef = useRef(6);
+  const currentRoundRef = useRef(1);
+
   // Audio Buffers & Source
   const introBufferRef = useRef<AudioBuffer | null>(null);
   const gameBufferRef = useRef<AudioBuffer | null>(null);
@@ -53,6 +58,7 @@ const App: React.FC = () => {
   const loseBufferRef = useRef<AudioBuffer | null>(null);
   const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const currentGainRef = useRef<GainNode | null>(null);
+  const scoreMusicTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Memory & Timer Management
   const gameTimersRef = useRef<(number | NodeJS.Timeout)[]>([]);
@@ -101,11 +107,14 @@ const App: React.FC = () => {
   // Infinite Mode State
   const [isInfiniteMode, setIsInfiniteMode] = useState(true);
   const [currentRound, setCurrentRound] = useState(1);
-  const [currentBpm, setCurrentBpm] = useState(105);
-  const [currentLength, setCurrentLength] = useState(8);
+  const [displayRound, setDisplayRound] = useState(1);
+  const [exitingRound, setExitingRound] = useState<number | null>(null);
+  const [currentBpm, setCurrentBpm] = useState(95);
+  const [currentLength, setCurrentLength] = useState(6);
 
   // Analysis Results (Gemini)
   const [robotState, setRobotState] = useState<RobotState>("average");
+  const [showFlash, setShowFlash] = useState(false);
   const [resultData, setResultData] = useState<GeminiResponse | null>(null);
   const [aiResults, setAiResults] = useState<(boolean | null)[]>([]);
   const [aiDetectedCounts, setAiDetectedCounts] = useState<number[][]>([]);
@@ -142,12 +151,41 @@ const App: React.FC = () => {
     countdown,
   ]);
 
-  // Stop recording immediately when entering Result state
+  // Stop recording ONLY when the game is over (user loses) or back to menu
   useEffect(() => {
-    if (status === GameStatus.RESULT && isRecording) {
+    const currentCorrect = revealedResults.filter((r) => r === true).length;
+    const isFinished =
+      (revealedResults.length > 0 && revealedResults.every((r) => r != null)) ||
+      (isInfiniteMode && revealedResults.some((r) => r === false));
+    const isPerfect = isFinished && currentCorrect === sequence.length;
+    const isGameOver = isFinished && !isPerfect;
+
+    // Stop recording on Game Over or if we return to the main loading/start screen
+    const shouldStop =
+      (status === GameStatus.RESULT && isGameOver) ||
+      (status === GameStatus.LOADING && isRecording);
+
+    if (shouldStop && isRecording) {
       stopRecording();
     }
-  }, [status, isRecording, stopRecording]);
+  }, [
+    status,
+    isRecording,
+    stopRecording,
+    revealedResults,
+    sequence.length,
+    isInfiniteMode,
+  ]);
+
+  // Handle Round Transition Animation State
+  useEffect(() => {
+    if (currentRound !== displayRound) {
+      setExitingRound(displayRound);
+      setDisplayRound(currentRound);
+      const timer = setTimeout(() => setExitingRound(null), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [currentRound, displayRound]);
 
   // --- AUDIO HELPERS ---
   // Countdown beep: Matches index copy.html (always plays, not affected by mute)
@@ -354,8 +392,13 @@ const App: React.FC = () => {
               }
               return next;
             });
-            if (res === true) playSuccessSound();
-            else if (res === false) playFailSound();
+
+            // SILENCE SOUNDS IN INFINITE MODE (already handled in runSequence)
+            if (!isInfiniteMode) {
+              if (res === true) playSuccessSound();
+              else if (res === false) playFailSound();
+            }
+
             i++;
 
             if (i === sequence.length) {
@@ -363,10 +406,14 @@ const App: React.FC = () => {
                 .slice(0, sequence.length)
                 .filter((r) => r === true).length;
               const isPerfect = totalCorrect === sequence.length;
-              setTimeout(() => {
-                playOneShot(isPerfect ? "win" : "lose");
-                setRobotState(isPerfect ? "happy" : "sad");
-              }, 500);
+
+              // SILENCE FINAL SOUNDS IN INFINITE MODE
+              if (!isInfiniteMode) {
+                setTimeout(() => {
+                  playOneShot(isPerfect ? "win" : "lose");
+                  setRobotState(isPerfect ? "happy" : "sad");
+                }, 500);
+              }
             }
           } else {
             clearInterval(interval);
@@ -391,8 +438,13 @@ const App: React.FC = () => {
                 next[i] = res;
                 return next;
               });
-              if (res === true) playSuccessSound();
-              else if (res === false) playFailSound();
+
+              // SILENCE SOUNDS IN INFINITE MODE
+              if (!isInfiniteMode) {
+                if (res === true) playSuccessSound();
+                else if (res === false) playFailSound();
+              }
+
               i++;
             }
           } else {
@@ -409,10 +461,13 @@ const App: React.FC = () => {
                   `ROUND ${currentRound} ${statusText}\\nSCORE: ${totalCorrect}/${sequence.length}`
                 );
 
-                setTimeout(() => {
-                  playOneShot(isPerfect ? "win" : "lose");
-                  setRobotState(isPerfect ? "happy" : "sad");
-                }, 500);
+                // SILENCE FINAL SOUNDS IN INFINITE MODE
+                if (!isInfiniteMode) {
+                  setTimeout(() => {
+                    playOneShot(isPerfect ? "win" : "lose");
+                    setRobotState(isPerfect ? "happy" : "sad");
+                  }, 500);
+                }
               }
               return prev;
             });
@@ -558,7 +613,7 @@ const App: React.FC = () => {
       if (currentSourceRef.current) {
         try {
           currentSourceRef.current.stop();
-        } catch (e) {}
+        } catch (e) { }
         currentSourceRef.current = null;
       }
 
@@ -580,12 +635,14 @@ const App: React.FC = () => {
           const targetBPM = isInfiniteMode
             ? currentBpm
             : DIFFICULTIES[difficulty].bpm;
+
+          // Speed up the music to match the current BPM
           playbackRate = targetBPM / BASE_BPM;
           offset = startOffset / playbackRate;
           break;
         case "score":
           buffer = scoreBufferRef.current;
-          volume = 0.2;
+          volume = 0.23;
           offset = 0;
           break;
       }
@@ -620,7 +677,7 @@ const App: React.FC = () => {
     if (currentSourceRef.current) {
       try {
         currentSourceRef.current.stop();
-      } catch (e) {}
+      } catch (e) { }
       currentSourceRef.current = null;
     }
     currentGainRef.current = null;
@@ -630,12 +687,25 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!audioCtxRef.current) return;
 
-    // Removed GameStatus.MENU auto-play to prevent redundant triggers
-    // we now trigger it manually in handleStartGame and startGame
-    if (status === GameStatus.RESULT || status === GameStatus.ANALYZING) {
-      playTrack("score");
+    // Clear any pending music trigger
+    if (scoreMusicTimerRef.current) {
+      clearTimeout(scoreMusicTimerRef.current);
+      scoreMusicTimerRef.current = null;
     }
-  }, [status, playTrack]);
+
+    if (status === GameStatus.RESULT || status === GameStatus.ANALYZING) {
+      // If we are in Infinite Mode and just entered RESULT, it means we failed.
+      // The requirement is to wait 2 seconds after failing.
+      if (isInfiniteMode && status === GameStatus.RESULT) {
+        scoreMusicTimerRef.current = setTimeout(() => {
+          playTrack("score");
+          scoreMusicTimerRef.current = null;
+        }, 2000);
+      } else {
+        playTrack("score");
+      }
+    }
+  }, [status, playTrack, isInfiniteMode]);
 
   // Update volume of currently playing music when mute state changes
   useEffect(() => {
@@ -652,7 +722,7 @@ const App: React.FC = () => {
       (status === GameStatus.RESULT || status === GameStatus.ANALYZING) &&
       scoreBufferRef.current
     ) {
-      targetVolume = 0.2;
+      targetVolume = 0.23;
     } else if (status === GameStatus.PLAYING && gameBufferRef.current) {
       targetVolume = 0.5;
     }
@@ -677,14 +747,7 @@ const App: React.FC = () => {
     startGame();
   }, [isAssetsReady]); // 'startGame' omitted from deps to avoid circular if not hoisted
 
-  // Effect to switch music based on state
-  useEffect(() => {
-    if (!audioCtxRef.current) return;
 
-    if (status === GameStatus.RESULT || status === GameStatus.ANALYZING) {
-      playTrack("score");
-    }
-  }, [status, playTrack]);
 
   // --- GAME LOOP ---
   const startGame = async (
@@ -700,7 +763,7 @@ const App: React.FC = () => {
     const targetDifficulty = forcedDifficulty || difficulty;
     const length =
       lengthOverride ||
-      (isInfiniteMode ? currentLength : DIFFICULTIES[targetDifficulty].length);
+      (isInfiniteMode ? infiniteLengthRef.current : DIFFICULTIES[targetDifficulty].length);
     const newSequence = generateSequence(targetDifficulty, length);
     setSequence(newSequence);
     setLocalResults(new Array(newSequence.length).fill(null));
@@ -716,16 +779,19 @@ const App: React.FC = () => {
     setCurrentBeat(-1);
     hasHitCurrentBeatRef.current = false;
 
-    // Start Video Recording immediately to warm up hardware
+    // Start Video Recording immediately
+    // (Hook handles idempotency via mediaRecorderRef.current.state to allow multi-round videos)
     startRecording();
 
     const targetBPM =
       bpmOverride ||
-      (isInfiniteMode ? currentBpm : DIFFICULTIES[targetDifficulty].bpm);
+      (isInfiniteMode ? infiniteBpmRef.current : DIFFICULTIES[targetDifficulty].bpm);
+
     const playbackRate = targetBPM / BASE_BPM;
 
     // Time until first beat in the audio file
-    const timeToFirstBeat = FIRST_BEAT_TIME_SEC / playbackRate;
+    const trackFirstBeatSec = FIRST_BEAT_TIME_SEC;
+    const timeToFirstBeat = trackFirstBeatSec / playbackRate;
     const countdownDuration = 3; // 3 seconds countdown
 
     const ctx = audioCtxRef.current;
@@ -734,7 +800,7 @@ const App: React.FC = () => {
     // PRECISE SCHEDULING: 
     // We want the countdown to end exactly when the first beat hits.
     // We'll schedule the music to start at a specific time in the future.
-    
+
     let musicStartTime = 0;
     let countdownDelay = 0;
 
@@ -751,7 +817,7 @@ const App: React.FC = () => {
 
     // Start countdown coordination
     const timerId = setTimeout(() => {
-      startCountdown(newSequence, currentSessionId, musicStartTime, playbackRate);
+      startCountdown(newSequence, currentSessionId, musicStartTime, playbackRate, targetBPM);
     }, Math.max(0, countdownDelay));
     gameTimersRef.current.push(timerId);
   };
@@ -768,10 +834,18 @@ const App: React.FC = () => {
 
     // 2. Start game directly, bypassing MENU state
     setIsInfiniteMode(true);
+    setJudgementMode("LOCAL"); // Force LOCAL mode for real-time infinite play
     setCurrentRound(1);
-    setCurrentBpm(105);
-    setCurrentLength(8);
-    startGame(undefined, 105, 8);
+    currentRoundRef.current = 1;
+    // Speed up initial difficulty
+    infiniteBpmRef.current = 100;
+    infiniteLengthRef.current = 6;
+
+    // Update State
+    setCurrentBpm(100);
+    setCurrentLength(6);
+
+    startGame(undefined, 100, 6);
   }, [isAssetsReady, startGame]);
 
   // Separated countdown logic for cleaner code
@@ -779,7 +853,8 @@ const App: React.FC = () => {
     newSequence: number[],
     currentSessionId: number,
     musicStartTime: number,
-    playbackRate: number
+    playbackRate: number,
+    bpm: number
   ) => {
     let count = 3;
     setCountdown(count);
@@ -797,7 +872,7 @@ const App: React.FC = () => {
         clearInterval(timerId);
         setCountdown(null);
         // Start sequence immediately - synced with first beat!
-        runSequence(newSequence, currentSessionId, musicStartTime, playbackRate);
+        runSequence(newSequence, currentSessionId, musicStartTime, playbackRate, bpm);
       }
     }, 1000);
     gameTimersRef.current.push(timerId);
@@ -807,9 +882,9 @@ const App: React.FC = () => {
     seq: number[],
     currentSessionId: number,
     musicStartTime: number,
-    playbackRate: number
+    playbackRate: number,
+    bpm: number
   ) => {
-    const bpm = isInfiniteMode ? currentBpm : DIFFICULTIES[difficulty].bpm;
     const interval = 60000 / bpm;
     const intervalSec = 60 / bpm;
 
@@ -841,7 +916,7 @@ const App: React.FC = () => {
         canvasRef.current.width = 160;
         canvasRef.current.height = 120;
       }
-      
+
       const scheduler = () => {
         const ctx = audioCtxRef.current;
         if (!ctx || sessionIdRef.current !== currentSessionId) return;
@@ -852,7 +927,7 @@ const App: React.FC = () => {
         while (
           nextBeatToSchedule < seq.length &&
           firstBeatTime + nextBeatToSchedule * intervalSec <
-            currentTime + LOOKAHEAD_SEC
+          currentTime + LOOKAHEAD_SEC
         ) {
           const beatIdx = nextBeatToSchedule;
           const beatTime = firstBeatTime + beatIdx * intervalSec;
@@ -874,16 +949,16 @@ const App: React.FC = () => {
               const frame =
                 videoRef.current && canvasRef.current
                   ? (() => {
-                      const canvas = canvasRef.current;
-                      const video = videoRef.current;
-                      const ctxCanvas = canvas.getContext("2d");
-                      if (ctxCanvas) {
-                        // Use the pre-set small size
-                        ctxCanvas.drawImage(video, 0, 0, 160, 120);
-                        return canvas.toDataURL("image/jpeg", 0.4); // Slightly lower quality for speed
-                      }
-                      return null;
-                    })()
+                    const canvas = canvasRef.current;
+                    const video = videoRef.current;
+                    const ctxCanvas = canvas.getContext("2d");
+                    if (ctxCanvas) {
+                      // Use the pre-set small size
+                      ctxCanvas.drawImage(video, 0, 0, 160, 120);
+                      return canvas.toDataURL("image/jpeg", 0.4); // Slightly lower quality for speed
+                    }
+                    return null;
+                  })()
                   : null;
 
               if (frame) {
@@ -929,7 +1004,31 @@ const App: React.FC = () => {
             setAiResults([...aiResultsRef.current]);
           }
 
-          if (!isHit) playFailSound();
+          if (!isHit) {
+            playFailSound();
+
+            // IMMEDIATE FAILURE IN INFINITE MODE
+            if (isInfiniteMode) {
+              // 1. Clear any pending timers (stops scheduled snapshots/beats)
+              gameTimersRef.current.forEach((id) => {
+                clearTimeout(id as any);
+                clearInterval(id as any);
+              });
+              gameTimersRef.current = [];
+
+              // 2. Show failure state
+              setRevealedResults([...results]); // Reveal the failure point
+              setRobotState("sad");
+              playOneShot("lose");
+              setShowFlash(true); // FLASH!
+              setStatus(GameStatus.RESULT);
+
+              // Clear flash after animation
+              const flashTimer = setTimeout(() => setShowFlash(false), 600);
+              gameTimersRef.current.push(flashTimer);
+              return; // Stop the scheduler
+            }
+          }
 
           hasHitCurrentBeatRef.current = false;
           nextJudgementBeat++;
@@ -937,6 +1036,48 @@ const App: React.FC = () => {
           if (nextJudgementBeat === seq.length) {
             // Sequence complete
             setCurrentBeat(-1);
+
+            // SUCCESS AUTO-PROGRESS IN INFINITE MODE
+            if (isInfiniteMode) {
+              playOneShot("win");
+              setRobotState("happy");
+              setOverlayText(`ROUND ${currentRoundRef.current} CLEARED!`);
+
+              // Progress Difficulty
+              let nextBpm;
+              let nextLength;
+
+              if (currentRoundRef.current === 1) {
+                // Next is Round 2: Specific request for 110 BPM
+                nextBpm = 110;
+                nextLength = infiniteLengthRef.current + 2;
+              } else {
+                // Standard progression: +4% speed, +2 beats
+                nextBpm = Math.floor(infiniteBpmRef.current * 1.04);
+                nextLength = infiniteLengthRef.current + 2;
+              }
+
+              // Auto-start next round after short delay
+              const nextRoundTimer = setTimeout(() => {
+                currentRoundRef.current += 1;
+                const nextRoundNum = currentRoundRef.current;
+
+                // Update Refs (Critical for next round's closure)
+                infiniteBpmRef.current = nextBpm;
+                infiniteLengthRef.current = nextLength;
+
+                // Update State (for UI)
+                setCurrentBpm(nextBpm);
+                setCurrentLength(nextLength);
+                setCurrentRound(nextRoundNum);
+
+                // Start Game with new values
+                startGame(undefined, nextBpm, nextLength);
+              }, 1500);
+              gameTimersRef.current.push(nextRoundTimer);
+              return;
+            }
+
             const finishTimer = setTimeout(() => {
               const flattened = beatFrameGroups
                 .flat()
@@ -1139,13 +1280,16 @@ const App: React.FC = () => {
       {/* Hidden Canvas for capture */}
       <canvas ref={canvasRef} className="hidden" />
 
+      {/* FAIL FLASH OVERLAY */}
+      {showFlash && <div className="fail-flash-overlay" />}
+
       {/* Background Video */}
       <video
         ref={videoRef}
         className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
         style={
           {
-            //   opacity: window.location.hostname === "localhost" ? 1 : videoOpacity,
+              opacity: window.location.hostname === "localhost" ? 0 : videoOpacity,
           }
         }
         playsInline
@@ -1158,10 +1302,16 @@ const App: React.FC = () => {
         videoRef={videoRef}
         landmarksRef={landmarksRef}
         isCameraReady={isCameraReady}
+        fingerCount={fingerCount}
         showFingerVector={
-          status === GameStatus.LOADING || status === GameStatus.RESULT
+          status === GameStatus.LOADING ||
+          status === GameStatus.MENU
         }
       />
+
+
+
+
 
       {/* Minimal Overlay Shadow (Top only for visibility) */}
       <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-black/40 to-transparent pointer-events-none z-10" />
@@ -1196,10 +1346,10 @@ const App: React.FC = () => {
 
                 <button
                   onClick={() => {
+                    setCurrentBpm(95);
+                    setCurrentLength(6);
                     setCurrentRound(1);
-                    setCurrentBpm(105);
-                    setCurrentLength(8);
-                    startGame(undefined, 105, 8);
+                    startGame(undefined, 95, 6);
                   }}
                   className="group relative px-12 py-5 rounded-full bg-white text-black font-black text-2xl tracking-widest active:scale-95 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
                 >
@@ -1214,13 +1364,26 @@ const App: React.FC = () => {
         {(status === GameStatus.PLAYING || status === GameStatus.ANALYZING) && (
           <div className="w-full h-full flex flex-col justify-between py-6 md:py-12">
             {/* Top Center Round Info */}
-            <div className="absolute top-8 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center pointer-events-none w-full opacity-50">
-              <div className="text-4xl md:text-6xl font-black text-white drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)] uppercase tracking-tighter animate-pop">
-                ROUND {currentRound}
+            <div className="absolute top-10 left-0 right-0 z-50 flex flex-col items-center pointer-events-none scale-110 md:scale-125 overflow-hidden">
+              <div className="relative h-24 md:h-32 w-full flex items-center justify-center">
+                {exitingRound !== null && (
+                  <div
+                    key={`exit-${exitingRound}`}
+                    className="absolute text-6xl md:text-8xl font-black text-white/50 drop-shadow-[0_0_30px_rgba(255,255,255,0.2)] uppercase italic tracking-tighter animate-round-slide-out leading-none"
+                  >
+                    ROUND {exitingRound}
+                  </div>
+                )}
+                <div
+                  key={`enter-${displayRound}`}
+                  className="absolute text-6xl md:text-8xl font-black text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.4)] uppercase italic tracking-tighter animate-round-slide-in leading-none"
+                >
+                  ROUND {displayRound}
+                </div>
               </div>
-              <div className="flex items-center gap-3 mt-1.5 px-3 py-1 bg-black/40 backdrop-blur-md rounded-full border border-white/10 shadow-lg">
-                <div className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
-                <span className="text-[10px] md:text-xs font-black text-white/70 uppercase tracking-[0.2em]">
+              <div className="flex items-center gap-3 mt-3 px-4 py-1.5 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 shadow-2xl">
+                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.8)]" />
+                <span className="text-[10px] md:text-xs font-black text-white/90 uppercase tracking-[0.25em]">
                   {currentBpm} BPM | {sequence.length} BEATS
                 </span>
               </div>
@@ -1228,8 +1391,11 @@ const App: React.FC = () => {
 
             {/* Top Center Countdown */}
             {countdown !== null && (
-              <div className="absolute top-[12%] left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-                <div className="text-9xl md:text-[12rem] font-black text-white drop-shadow-[0_10px_30px_rgba(0,0,0,0.8)] animate-pulse">
+              <div className="absolute top-[25%] left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+                <div
+                  key={countdown}
+                  className="text-9xl md:text-[12rem] font-black text-white drop-shadow-[0_10px_30px_rgba(0,0,0,0.8)] animate-countdown-dramatic"
+                >
                   {countdown}
                 </div>
               </div>
@@ -1239,56 +1405,13 @@ const App: React.FC = () => {
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-full z-40 pointer-events-none">
               {/* Active Sequence */}
               {status === GameStatus.PLAYING && (
-                <div
-                  className={`flex flex-col items-center select-none animate-pop w-full px-4 transition-opacity duration-500 ${
-                    countdown !== null ? "opacity-20" : "opacity-100"
-                  }`}
-                >
-                  <div
-                    className={`flex flex-col items-center gap-2 md:gap-4 transition-all duration-500`}
-                  >
-                    {(() => {
-                      const isLong = sequence.length > 12;
-                      const midPoint = isLong
-                        ? Math.ceil(sequence.length / 2)
-                        : sequence.length;
-
-                      const renderRow = (nums: number[], startIdx: number) => (
-                        <div className="flex flex-wrap justify-center items-center font-bold text-4xl md:text-6xl lg:text-7xl text-white drop-shadow-[0_2px_2px_rgba(0,0,0,1)] gap-0">
-                          {nums.map((num, i) => {
-                            const globalIdx = i + startIdx;
-                            const isCurrent = globalIdx === currentBeat;
-
-                            let displayClass =
-                              "transition-all duration-300 ease-out inline-block";
-                            if (isCurrent && countdown === null) {
-                              displayClass +=
-                                " text-yellow-400 scale-[1.6] drop-shadow-[0_0_30px_rgba(250,204,21,0.6)] z-10 font-black";
-                            } else {
-                              displayClass += " text-white opacity-100";
-                            }
-
-                            return (
-                              <React.Fragment key={globalIdx}>
-                                {i > 0 && (
-                                  <span className="mx-0.5 opacity-80">-</span>
-                                )}
-                                <span className={displayClass}>{num}</span>
-                              </React.Fragment>
-                            );
-                          })}
-                        </div>
-                      );
-
-                      return (
-                        <>
-                          {renderRow(sequence.slice(0, midPoint), 0)}
-                          {isLong &&
-                            renderRow(sequence.slice(midPoint), midPoint)}
-                        </>
-                      );
-                    })()}
-                  </div>
+                <div className="flex flex-col items-center w-full">
+                  {/* MAIN SEQUENCE */}
+                  <SequenceDisplay
+                    sequence={sequence}
+                    currentBeat={currentBeat}
+                    countdown={countdown}
+                  />
                 </div>
               )}
 
@@ -1319,267 +1442,182 @@ const App: React.FC = () => {
                 (r) => r === true
               ).length;
               const isFinished =
-                revealedResults.length > 0 &&
-                revealedResults.every((r) => r !== null);
+                (revealedResults.length > 0 &&
+                  revealedResults.every((r) => r != null)) || (isInfiniteMode && revealedResults.some(r => r === false));
               const isPerfect = isFinished && currentCorrect === sequence.length;
+              const hideForInfiniteFail = isInfiniteMode && !isPerfect;
 
-              if (!isFinished) return null;
+              if (!isFinished) {
+                return (
+                  <div className="flex flex-col items-center gap-4 md:gap-6 animate-pop px-4">
+                    <h2 className="text-2xl md:text-4xl font-black uppercase text-glow animate-pulse">
+                      ANALYZING...
+                    </h2>
+                  </div>
+                );
+              }
 
               return (
-                <div className="flex flex-col items-center animate-slide-up-pop">
-                  <Robot state={robotState} />
-                  <div className="mt-8 mb-4 relative group">
-                    <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 rounded-lg blur opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200 animate-tilt"></div>
-                    <div className="relative px-8 py-4 bg-black/50 backdrop-blur-xl rounded-lg border border-white/20 shadow-2xl flex items-center gap-4">
-                      <span className="text-3xl md:text-5xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-blue-100 to-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] uppercase tracking-tighter">
-                        ROUND {currentRound}
-                      </span>
-                      <span className="text-xl md:text-3xl font-bold text-white/90 uppercase tracking-[0.2em] border-l-2 border-white/30 pl-4">
-                        {isPerfect ? "COMPLETE" : "FAIL"}
-                      </span>
-                    </div>
-                  </div>
-                  <h1 className="text-6xl md:text-8xl font-black text-white drop-shadow-[0_4px_4px_rgba(0,0,0,1)]">
-                    {currentCorrect} / {sequence.length}
-                  </h1>
-                </div>
-              );
-            })()}
-
-            {/* Action Buttons */}
-            <div className="flex flex-col items-center gap-4 md:gap-5 mt-3 md:mt-4">
-              {(() => {
-                const currentCorrect = revealedResults.filter(
-                  (r) => r === true
-                ).length;
-                const isFinished =
-                  revealedResults.length > 0 &&
-                  revealedResults.every((r) => r != null);
-                const isPerfect =
-                  isFinished && currentCorrect === sequence.length;
-                const isDev = window.location.hostname === "localhost";
-
-                if (!isFinished) {
-                  return (
-                    <button
-                      disabled
-                      className="px-12 py-5 bg-white/10 text-white/40 font-black uppercase tracking-widest text-xl cursor-not-allowed opacity-50 border border-white/10 rounded-lg"
-                    >
-                      Analyzing...
-                    </button>
-                  );
-                }
-
-                if (isFinished && !isPerfect) {
-                  return (
-                    <div className="flex flex-col items-center gap-4 w-full">
-                      <button
-                        onClick={() => startGame()}
-                        className="animate-slide-up-pop px-12 py-5 bg-red-600 text-white font-black uppercase tracking-widest text-xl hover:bg-red-700 active:scale-95 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-2xl w-full min-w-[280px]"
-                      >
-                        TRY AGAIN
-                      </button>
-                    </div>
-                  );
-                }
-
-                if (isFinished && isPerfect) {
-                  return (
-                    <div className="flex flex-col items-center gap-4 w-full">
-                      {isInfiniteMode ? (
-                        <button
-                          onClick={() => {
-                            const nextBpm = currentBpm + 5;
-                            const nextLength = currentLength + 3;
-                            setCurrentBpm(nextBpm);
-                            setCurrentLength(nextLength);
-                            setCurrentRound((r) => r + 1);
-                            startGame(undefined, nextBpm, nextLength);
-                          }}
-                          className="px-12 py-5 bg-green-600 text-white font-black uppercase tracking-widest text-xl hover:bg-green-700 hover:scale-105 active:scale-95 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-2xl w-full min-w-[280px]"
-                        >
-                          NEXT ROUND
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => {
-                            const diffs = Object.keys(
-                              DIFFICULTIES
-                            ) as Difficulty[];
-                            const currentIndex = diffs.indexOf(difficulty);
-                            const nextDifficulty = diffs[currentIndex + 1];
-
-                            if (nextDifficulty) {
-                              setDifficulty(nextDifficulty);
-                              startGame(nextDifficulty);
-                            } else {
-                              setDifficulty("EASY");
-                              setStatus(GameStatus.LOADING);
-                            }
-                          }}
-                          className="px-12 py-5 bg-green-600 text-white font-black uppercase tracking-widest text-xl hover:bg-green-700 hover:scale-105 active:scale-95 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-2xl w-full min-w-[280px]"
-                        >
-                          {difficulty === "NIGHTMARE" ? "FINISH" : "NEXT ROUND"}
-                        </button>
-                      )}
-                      <button
-                        onClick={() => startGame()}
-                        className="text-white text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] opacity-60 hover:opacity-100 transition-opacity underline underline-offset-8"
-                      >
-                        Replay Level
-                      </button>
-                    </div>
-                  );
-                }
-
-                return null;
-              })()}
-
-              {/* Share / Save Video Button */}
-              <button
-                disabled={!videoBlob}
-                onClick={() => {
-                  if (!videoBlob) return;
-                  const url = URL.createObjectURL(videoBlob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  
-                  // DYNAMIC EXTENSION: Extracts 'mp4' from 'video/mp4' or 'webm' from 'video/webm'
-                  const mimeType = videoBlob.type.split(";")[0]; // e.g., "video/mp4"
-                  const extension = mimeType.split("/")[1] || "mp4"; // e.g., "mp4"
-                  
-                  a.download = `neon-rhythm-round-${currentRound}.${extension}`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                className={`mt-6 px-8 py-3 bg-blue-600 text-white font-black uppercase tracking-widest text-sm md:text-base transition-all shadow-lg rounded-full flex items-center gap-2 ${
-                  !videoBlob
-                    ? "opacity-50 cursor-not-allowed grayscale-[0.5]"
-                    : "hover:bg-blue-700 hover:scale-105 active:scale-95"
-                }`}
-              >
-                <span>
-                  {videoBlob ? "DOWNLOAD REPLAY" : "PREPARING REPLAY..."}
-                </span>
-                <span className="text-xl">{videoBlob ? "📹" : "⏳"}</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setDifficulty("EASY");
-                  setIsInfiniteMode(true);
-                  setCurrentRound(1);
-                  setCurrentBpm(105);
-                  setCurrentLength(8);
-                  setStatus(GameStatus.LOADING);
-                }}
-                className="text-white/40 text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] hover:text-white transition-colors mt-4"
-              >
-                Back to Menu
-              </button>
-            </div>
-
-            {/* Detailed Results Panel */}
-            <div className="bg-black/60 p-6 rounded-3xl border border-white/10 w-full backdrop-blur-md">
-              {/* Results Sequence Overlay (Colored based on results) */}
-              <div className="flex flex-wrap justify-center items-center font-bold text-4xl md:text-6xl lg:text-7xl text-white drop-shadow-[0_2px_2px_rgba(0,0,0,1)] gap-0 mb-8 md:mb-12">
-                {sequence.map((num, i) => {
-                  const res = revealedResults[i];
-                  const isMiss = res === false;
-                  const isPending = res === null;
-
-                  let colorClass = "text-white";
-                  if (!isPending) {
-                    if (isMiss)
-                      colorClass =
-                        "text-red-500 drop-shadow-[0_0_15px_rgba(239,68,68,0.4)]";
-                    else colorClass = "text-white"; // Hits remain white as requested
-                  }
-
-                  return (
-                    <React.Fragment key={i}>
-                      {i > 0 && (
-                        <span className="mx-0.5 opacity-80 text-white">-</span>
-                      )}
-                      <span
-                        className={`transition-all duration-300 ${colorClass}`}
-                      >
-                        {num}
-                      </span>
-                    </React.Fragment>
-                  );
-                })}
-              </div>
-
-              {/* Captured Frames Grid */}
-              <div className="flex gap-2 md:gap-4 justify-center flex-wrap mt-3 md:mt-4">
-                {sequence.map((targetCount, beatIdx) => {
-                  const res = revealedResults[beatIdx];
-                  const isPending = res == null;
-
-                  // Get detected counts for this beat group
-                  const beatDetected = aiDetectedCounts[beatIdx] || [];
-                  const startIndex = beatIdx * 3;
-
-                  // Logic to pick a frame to show
-                  let displayFrameIdx = 1; // Default to middle
-                  let detectedVal: string | number = "?";
-
-                  if (!isPending) {
-                    // If we have AI results, try to find a matching frame
-                    const matchIdx = beatDetected.findIndex(
-                      (c) => c === targetCount
-                    );
-                    displayFrameIdx = matchIdx !== -1 ? matchIdx : 1;
-                    detectedVal = beatDetected[displayFrameIdx];
-                  }
-
-                  const frame = capturedFrames[startIndex + displayFrameIdx];
-
-                  const colorClass = isPending
-                    ? "border-white/10"
-                    : res === true
-                    ? "border-green-500"
-                    : "border-red-500";
-
-                  const badgeColor = isPending
-                    ? "bg-white/10"
-                    : res === true
-                    ? "bg-green-600"
-                    : "bg-red-600";
-
-                  return (
-                    <div
-                      key={beatIdx}
-                      className={`relative w-24 h-32 md:w-32 md:h-44 rounded-lg md:rounded-xl overflow-hidden border-2 transition-all ${colorClass} bg-black/50 active:scale-110 md:hover:scale-110 origin-bottom duration-300 group touch-manipulation`}
-                    >
-                      <img
-                        src={frame}
-                        alt={`beat ${beatIdx + 1}`}
-                        className={`w-full h-full object-cover transition-opacity ${
-                          isPending ? "opacity-30 blur-[2px]" : "opacity-90"
-                        } group-hover:opacity-100`}
-                      />
-                      <div className="absolute top-1 right-1 bg-black/40 backdrop-blur-sm rounded text-[8px] md:text-[10px] text-white/50 px-1.5 py-0.5 font-mono border border-white/10">
-                        {isPending ? "JUDGING..." : `BEAT ${beatIdx + 1}`}
+                <div className="flex flex-col items-center relative gap-2 md:gap-4">
+                  {/* BIG ANIMATED FAIL TITLE - Positioned naturally at top of flow */}
+                  {hideForInfiniteFail && (
+                    <div className="z-[100] pointer-events-none mb-2 md:mb-6">
+                      <div className="text-[10rem] md:text-[16rem] font-black text-red-600 drop-shadow-[0_0_50px_rgba(220,38,38,0.8)] uppercase italic tracking-tighter animate-fail-stamp select-none">
+                        FAIL
                       </div>
-                      <div
-                        className={`absolute bottom-0 w-full ${badgeColor} py-1 flex flex-col items-center shadow-[0_-2px_10_rgba(0,0,0,0.3)] transition-colors`}
-                      >
-                        <span className="text-[8px] md:text-[10px] font-bold text-white/90 uppercase tracking-wider">
-                          SAW: {isPending ? "?" : detectedVal}
+                    </div>
+                  )}
+
+                  <div
+                    className="flex flex-col items-center animate-slide-up-pop"
+                    style={{
+                      animationDelay: hideForInfiniteFail ? '0.7s' : '0s',
+                      opacity: 0,
+                      animationFillMode: 'forwards'
+                    }}
+                  >
+                    {!isInfiniteMode && <Robot state={robotState} />}
+                    <div className="mt-2 mb-4 relative group">
+                      <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 rounded-lg blur opacity-30 group-hover:opacity-50 transition duration-1000 group-hover:duration-200 animate-tilt"></div>
+                      <div className="relative px-8 py-4 bg-gradient-to-r from-blue-600/50 via-purple-600/50 to-pink-600/50 backdrop-blur-lg rounded-2xl border border-white/20 shadow-2xl flex items-center gap-4 md:gap-6">
+                        <span className="text-3xl md:text-5xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-blue-100 to-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] uppercase tracking-tighter pr-2 md:pr-4">
+                          {hideForInfiniteFail ? "GAME OVER" : `ROUND ${currentRound}`}
+                        </span>
+                        <span className="text-white/30 text-2xl md:text-4xl font-light">|</span>
+                        <span className="text-xl md:text-3xl font-bold text-white/90 uppercase tracking-[0.1em]">
+                          {hideForInfiniteFail
+                            ? `SURVIVED ${currentRound - 1} ROUND${currentRound - 1 === 1 ? "" : "S"}`
+                            : isPerfect
+                              ? "COMPLETE"
+                              : "FAIL"}
                         </span>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
+                    <h1 className={`text-6xl md:text-8xl font-black drop-shadow-[0_4px_4px_rgba(0,0,0,1)] ${isPerfect ? 'text-white' : 'text-red-500'}`}>
+                      {currentCorrect} / {sequence.length}
+                    </h1>
+
+                    <div className="flex flex-col items-center gap-4 md:gap-5 mt-10 md:mt-16">
+                      {isFinished && !isPerfect && (
+                        <div className="flex flex-col items-center gap-4 w-full">
+                          <button
+                            onClick={() => {
+                              if (isInfiniteMode) {
+                                // Replay the round they just lost on at current BPM
+                                startGame(undefined, infiniteBpmRef.current, infiniteLengthRef.current);
+                              } else {
+                                startGame();
+                              }
+                            }}
+                            className="px-12 py-5 bg-red-600 text-white font-black uppercase tracking-widest text-xl hover:bg-red-700 active:scale-95 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-2xl w-full min-w-[280px]"
+                          >
+                            {isInfiniteMode ? `REPLAY ROUND ${currentRound}` : "TRY AGAIN"}
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setDifficulty("EASY");
+                              setIsInfiniteMode(true);
+                              setCurrentRound(1);
+                              currentRoundRef.current = 1;
+                              setCurrentBpm(100);
+                              setCurrentLength(6);
+                              setStatus(GameStatus.LOADING);
+                            }}
+                            className="text-white/60 text-xs font-bold uppercase tracking-[0.2em] hover:text-white transition-colors mt-2"
+                          >
+                            Back to Menu
+                          </button>
+                        </div>
+                      )}
+
+                      {isFinished && isPerfect && (
+                        <div className="flex flex-col items-center gap-4 w-full">
+                          {isInfiniteMode ? (
+                            <button
+                              onClick={() => {
+                                currentRoundRef.current += 1;
+                                const nextRoundNum = currentRoundRef.current;
+                                let nextBpm;
+                                let nextLength;
+
+                                if (nextRoundNum === 2) {
+                                  nextBpm = 110;
+                                  nextLength = currentLength + 2;
+                                } else {
+                                  nextBpm = Math.floor(currentBpm * 1.05);
+                                  nextLength = currentLength + 3;
+                                }
+
+                                infiniteBpmRef.current = nextBpm;
+                                infiniteLengthRef.current = nextLength;
+                                setCurrentBpm(nextBpm);
+                                setCurrentLength(nextLength);
+                                setCurrentRound(nextRoundNum);
+                                startGame(undefined, nextBpm, nextLength);
+                              }}
+                              className="px-12 py-5 bg-green-600 text-white font-black uppercase tracking-widest text-xl hover:bg-green-700 hover:scale-105 active:scale-95 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-2xl w-full min-w-[280px]"
+                            >
+                              NEXT ROUND
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                const diffs = Object.keys(DIFFICULTIES) as Difficulty[];
+                                const currentIndex = diffs.indexOf(difficulty);
+                                const nextDifficulty = diffs[currentIndex + 1];
+
+                                if (nextDifficulty) {
+                                  setDifficulty(nextDifficulty);
+                                  startGame(nextDifficulty);
+                                } else {
+                                  setDifficulty("EASY");
+                                  setStatus(GameStatus.LOADING);
+                                }
+                              }}
+                              className="px-12 py-5 bg-green-600 text-white font-black uppercase tracking-widest text-xl hover:bg-green-700 hover:scale-105 active:scale-95 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-2xl w-full min-w-[280px]"
+                            >
+                              {difficulty === "NIGHTMARE" ? "FINISH" : "NEXT ROUND"}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => startGame()}
+                            className="text-white text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] opacity-60 hover:opacity-100 transition-opacity underline underline-offset-8"
+                          >
+                            Replay Level
+                          </button>
+                        </div>
+                      )}
+
+                      {videoBlob && (
+                        <button
+                          onClick={() => {
+                            const url = URL.createObjectURL(videoBlob);
+                            const a = document.createElement("a");
+                            a.href = url;
+                            const mimeType = videoBlob.type.split(";")[0];
+                            const extension = mimeType.split("/")[1] || "mp4";
+                            a.download = `neon-rhythm-round-${currentRound}.${extension}`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          }}
+                          className="mt-6 px-8 py-3 bg-blue-600 text-white font-black uppercase tracking-widest text-sm md:text-base transition-all shadow-lg rounded-full flex items-center gap-2 hover:bg-blue-700 hover:scale-105 active:scale-95"
+                        >
+                          <span>DOWNLOAD REPLAY</span>
+                          <span className="text-xl">📹</span>
+                        </button>
+                      )}
+
+
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
-      </div>
 
-      {/* MODALS */}
+      </div>
     </div>
   );
 };

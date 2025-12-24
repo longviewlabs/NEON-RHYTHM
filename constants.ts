@@ -30,11 +30,16 @@ export const LAYER_Y_POSITIONS = [0.8, 1.6, 2.4]; // Low, Mid, High
 // Use paths from public folder (served at root in production)
 export const MUSIC_INTRO_URL = "/before-game.mp3";
 export const MUSIC_GAME_URL = "/in-the-groove-music.mp3";
-export const MUSIC_SCORE_URL = "/Scores-screen.mp3";
+export const MUSIC_ROUND_2_URL = "/Neon Pulse.mp3";
+export const MUSIC_ROUND_3_URL = "/level3.mp3";
+export const MUSIC_SCORE_URL = "/sad-piano-chord-progression-27296.mp3";
 export const WIN_SOUND_URL = "/winning-sound.mp3";
 export const LOSE_SOUND_URL = "/losing-sound.mp3";
 
 export const BASE_BPM = 140; // Actual BPM of in-the-groove-music.mp3
+export const BASE_BPM_ROUND_2 = 110; // Placeholder BPM for Round 2
+export const BASE_BPM_ROUND_3 = 140; // Placeholder BPM for Round 3
+
 export const SONG_BPM = 140; // Default fallback for note generation if needed
 
 // ===========================================
@@ -44,6 +49,9 @@ export const SONG_BPM = 140; // Default fallback for note generation if needed
 // Time in seconds where the FIRST BEAT/DRUM hits in the song
 // The first beat of in-the-groove-music.mp3 starts at 3.11 seconds
 export const FIRST_BEAT_TIME_SEC = 3.11;
+export const FIRST_BEAT_ROUND_2_SEC = 0;
+export const FIRST_BEAT_ROUND_3_SEC = 0;
+
 
 // Fine-tune offset in milliseconds (for latency compensation)
 // Positive = delay game beats, Negative = advance game beats

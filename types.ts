@@ -26,15 +26,15 @@ export interface LevelConfig {
 }
 
 export const DIFFICULTIES: Record<Difficulty, LevelConfig> = {
-  EASY: { name: "VIBE CHECK", bpm: 100, length: 5, color: "text-green-500" },
+  EASY: { name: "VIBE CHECK", bpm: 95, length: 6, color: "text-green-500" },
   MEDIUM: {
     name: "IN THE GROOVE",
-    bpm: 120,
+    bpm: 110,
     length: 8,
     color: "text-white",
   },
-  HARD: { name: "HYPER FOCUS", bpm: 140, length: 12, color: "text-white" },
-  NIGHTMARE: { name: "VIRTUOSO", bpm: 160, length: 15, color: "text-red-500" },
+  HARD: { name: "HYPER FOCUS", bpm: 130, length: 11, color: "text-white" },
+  NIGHTMARE: { name: "VIRTUOSO", bpm: 150, length: 14, color: "text-red-500" },
 };
 
 export interface GeminiResponse {

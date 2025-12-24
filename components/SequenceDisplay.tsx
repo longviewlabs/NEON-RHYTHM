@@ -22,16 +22,27 @@ const SequenceDisplay: React.FC<SequenceDisplayProps> = ({
 
         let displayClass = "transition-all duration-300 ease-out inline-block";
         if (isCurrent && countdown === null) {
-          displayClass +=
-            " text-yellow-400 scale-[1.6] drop-shadow-[0_0_30px_rgba(250,204,21,0.6)] z-10 font-black";
+          displayClass += " text-yellow-400 scale-[1.6] drop-shadow-[0_0_30px_rgba(250,204,21,0.6)] z-10 font-black";
         } else {
           displayClass += " text-white opacity-100";
         }
 
         return (
           <React.Fragment key={globalIdx}>
-            {i > 0 && <span className="mx-0.5 opacity-80">-</span>}
-            <span className={displayClass}>{num}</span>
+            {i > 0 && (
+              <span
+                className="mx-0.5 opacity-80 animate-appear"
+                style={{ animationDelay: `${globalIdx * 0.1}s`, opacity: 0, animationFillMode: 'forwards' }}
+              >
+                -
+              </span>
+            )}
+            <span
+              className={`${displayClass} animate-appear`}
+              style={{ animationDelay: `${globalIdx * 0.1}s`, opacity: 0, animationFillMode: 'forwards' }}
+            >
+              {num}
+            </span>
           </React.Fragment>
         );
       })}
@@ -40,9 +51,8 @@ const SequenceDisplay: React.FC<SequenceDisplayProps> = ({
 
   return (
     <div
-      className={`flex flex-col items-center select-none animate-pop w-full px-4 transition-opacity duration-500 ${
-        countdown !== null ? "opacity-20" : "opacity-100"
-      }`}
+      className={`flex flex-col items-center select-none animate-pop w-full px-4 transition-all duration-500 ${countdown !== null ? "opacity-20" : "opacity-100"
+        }`}
     >
       <div className="flex flex-col items-center gap-2 md:gap-4 transition-all duration-500">
         {renderRow(sequence.slice(0, midPoint), 0)}
@@ -53,4 +63,5 @@ const SequenceDisplay: React.FC<SequenceDisplayProps> = ({
 };
 
 export default React.memo(SequenceDisplay);
+
 
