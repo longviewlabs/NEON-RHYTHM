@@ -29,10 +29,9 @@ export const LAYER_Y_POSITIONS = [0.8, 1.6, 2.4]; // Low, Mid, High
 // Audio
 // Use paths from public folder (served at root in production)
 export const MUSIC_INTRO_URL = "/before-game.mp3";
-export const MUSIC_GAME_URL = "/in-the-groove-music.mp3";
+// export const MUSIC_GAME_URL = "/in-the-groove-music.mp3"; // Removed in favor of programmatic music
 export const MUSIC_ROUND_2_URL = "/Neon Pulse.mp3";
 export const MUSIC_ROUND_3_URL = "/level3.mp3";
-export const MUSIC_SCORE_URL = "/sad-piano-chord-progression-27296.mp3";
 export const WIN_SOUND_URL = "/winning-sound.mp3";
 export const LOSE_SOUND_URL = "/losing-sound.mp3";
 

@@ -40,6 +40,89 @@ body {
   }
 }
 
+/* --- CUSTOM TRANSITION ANIMATIONS --- */
+
+@keyframes slide-in-top {
+  0% {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-top {
+  animation: slide-in-top 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes slide-in-bottom {
+  0% {
+    transform: translateY(50px);
+    opacity: 0;
+  }
+
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in-bottom {
+  animation: slide-in-bottom 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes zoom-in-pop {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+
+  70% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-zoom-in-pop {
+  animation: zoom-in-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes fade-in-fast {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in-fast {
+  animation: fade-in-fast 0.3s ease-out forwards;
+}
+
+@keyframes fade-in-delayed {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 0.8;
+  }
+}
+
+.animate-fade-in-delayed {
+  animation: fade-in-delayed 0.5s ease-out forwards;
+}
+
 /* --- VIRAL CHALLENGE UI --- */
 
 .container-viral {
@@ -653,4 +736,257 @@ body {
 
 .animate-appear {
   animation: appear 0.01s forwards;
+}
+
+/* --- ROBOT STRUCTURAL STYLES --- */
+
+.robot-wrapper {
+  position: relative;
+  margin: 0 auto 20px auto;
+  transform: scale(0.9);
+}
+
+.robot-head {
+  width: 140px;
+  height: 110px;
+  background-color: #ffffff;
+  border-radius: 45px;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2), inset 0 -8px 0 rgba(0, 0, 0, 0.05);
+  z-index: 10;
+}
+
+.face-screen {
+  width: 100px;
+  height: 65px;
+  background-color: #2b3040;
+  border-radius: 28px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.eyes-container {
+  display: flex;
+  position: relative;
+  z-index: 2;
+}
+
+.eye {
+  background-color: #00e676;
+  border-radius: 50%;
+  position: relative;
+}
+
+.antenna-stem {
+  width: 6px;
+  height: 25px;
+  background-color: #cfd8dc;
+  position: absolute;
+  top: -15px;
+  left: 50%;
+  transform-origin: bottom center;
+  z-index: -1;
+}
+
+.antenna-bulb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  position: absolute;
+  top: -14px;
+  left: -4px;
+}
+
+.cheek {
+  width: 10px;
+  height: 6px;
+  background-color: #ff80ab;
+  border-radius: 50%;
+  position: absolute;
+  bottom: 14px;
+  opacity: 0.3;
+}
+
+.cheek.left {
+  left: 18px;
+}
+
+.cheek.right {
+  right: 18px;
+}
+
+/* --- SAD THEME --- */
+.sad-theme .robot-head {
+  animation: violent-sob 1.5s infinite;
+}
+
+.sad-theme .face-screen {
+  border: 4px solid #90a4ae;
+}
+
+.sad-theme .eyes-container {
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.sad-theme .eye {
+  width: 14px;
+  height: 14px;
+  box-shadow: 0 0 5px #00e676;
+  transform: scaleY(0.2);
+  animation: squeeze-tight 3s infinite;
+}
+
+.sad-theme .tear {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background-color: #40c4ff;
+  border-radius: 50%;
+  top: 15px;
+  opacity: 0;
+  z-index: 20;
+}
+
+.sad-theme .tear.stream-1 {
+  left: 4px;
+  animation: cry-hard 0.8s infinite linear;
+}
+
+.sad-theme .tear.stream-2 {
+  left: 4px;
+  animation: cry-hard 0.8s infinite linear 0.4s;
+}
+
+.sad-theme .tear.stream-3 {
+  right: 4px;
+  animation: cry-hard 0.9s infinite linear 0.1s;
+}
+
+.sad-theme .tear.stream-4 {
+  right: 4px;
+  animation: cry-hard 0.9s infinite linear 0.5s;
+}
+
+.sad-theme .mouth {
+  width: 18px;
+  height: 10px;
+  border-top: 4px solid #00e676;
+  border-radius: 12px 12px 0 0;
+  margin-top: 2px;
+}
+
+/* --- HAPPY THEME --- */
+.happy-theme .robot-head {
+  animation: jump-for-joy 0.8s cubic-bezier(0.28, 0.84, 0.42, 1) infinite;
+}
+
+.happy-theme .face-screen {
+  border: 4px solid #00e676;
+  box-shadow: 0 0 15px rgba(0, 230, 118, 0.3), inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.happy-theme .eyes-container {
+  gap: 12px;
+  margin-bottom: 5px;
+}
+
+.happy-theme .eye {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #00e676;
+  background: transparent;
+  box-shadow: 0 0 8px #00e676;
+  animation: happy-twinkle 0.8s infinite alternate;
+}
+
+.happy-theme .eye::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background-color: #00e676;
+  border-radius: 50%;
+  top: 2px;
+  right: 2px;
+}
+
+.happy-theme .mouth {
+  width: 24px;
+  height: 12px;
+  border-bottom: 4px solid #00e676;
+  border-radius: 0 0 20px 20px;
+  margin-top: 2px;
+}
+
+/* --- ANALYZING THEME --- */
+.analyzing-theme .robot-head {
+  animation: lookAround 5s infinite;
+}
+
+.analyzing-theme .face-screen {
+  border: 4px solid #00b0ff;
+  box-shadow: 0 0 15px rgba(0, 176, 255, 0.3), inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.analyzing-theme .face-screen::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: 0;
+  width: 100%;
+  height: 20%;
+  background: linear-gradient(to bottom, transparent, rgba(0, 176, 255, 0.6), transparent);
+  animation: scan 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.analyzing-theme .eyes-container {
+  gap: 14px;
+  margin-bottom: 5px;
+}
+
+.analyzing-theme .eye {
+  width: 26px;
+  height: 8px;
+  border-radius: 4px;
+  background-color: #00b0ff;
+  box-shadow: 0 0 8px #00b0ff;
+}
+
+/* --- AVERAGE (IDLE) THEME --- */
+.average-theme .robot-head {
+  animation: polite-hover 4s ease-in-out infinite;
+}
+
+.average-theme .face-screen {
+  border: 4px solid #cfd8dc;
+}
+
+.average-theme .eyes-container {
+  gap: 14px;
+  margin-bottom: 8px;
+}
+
+.average-theme .eye {
+  width: 14px;
+  height: 14px;
+  background-color: #cfd8dc;
+  animation: slow-blink 4s infinite;
+}
+
+.average-theme .mouth {
+  width: 10px;
+  height: 4px;
+  background-color: #cfd8dc;
+  border-radius: 4px;
 }

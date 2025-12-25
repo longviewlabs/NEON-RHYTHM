@@ -12,6 +12,7 @@ export enum GameStatus {
   PLAYING = "PLAYING",
   ANALYZING = "ANALYZING",
   RESULT = "RESULT",
+  TRANSITION = "TRANSITION",
 }
 
 export type RobotState = "happy" | "sad" | "analyzing" | "average";
@@ -26,7 +27,7 @@ export interface LevelConfig {
 }
 
 export const DIFFICULTIES: Record<Difficulty, LevelConfig> = {
-  EASY: { name: "VIBE CHECK", bpm: 95, length: 6, color: "text-green-500" },
+  EASY: { name: "VIBE CHECK", bpm: 95, length: 8, color: "text-green-500" },
   MEDIUM: {
     name: "IN THE GROOVE",
     bpm: 110,

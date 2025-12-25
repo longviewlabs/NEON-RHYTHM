@@ -10,7 +10,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart, isAssetsReady }) => 
 
   const handleStart = () => {
     if (!isAssetsReady) return;
-    
+
     setIsTransitioning(true);
     // The transition takes about 500ms in the template, 
     // but the actual "Initiate" log happens after 150ms.
@@ -21,9 +21,9 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart, isAssetsReady }) => 
 
   return (
     <div className={`container-viral ${isTransitioning ? 'opacity-0 scale-50 rotate-[10deg] duration-500 ease-in-out' : 'animate-pop'}`}
-         style={{
-           transition: isTransitioning ? 'opacity 0.5s ease, transform 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55)' : 'none'
-         }}>
+      style={{
+        transition: isTransitioning ? 'opacity 0.5s ease, transform 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55)' : 'none'
+      }}>
       <div className="title-wrapper-viral">
         <h1 className="title-viral">
           <div className="text-content">
@@ -35,7 +35,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart, isAssetsReady }) => 
           ONLY 1% CAN PASS 💀
         </div>
       </div>
-      
+
       <button
         onClick={handleStart}
         disabled={!isAssetsReady}
@@ -46,7 +46,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart, isAssetsReady }) => 
       </button>
 
       <div className="footer-hint-viral">
-        GET YOUR HANDS READY 👋
+        GET YOUR FINGERS READY 👋
       </div>
     </div>
   );

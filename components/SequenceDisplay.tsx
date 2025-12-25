@@ -31,15 +31,13 @@ const SequenceDisplay: React.FC<SequenceDisplayProps> = ({
           <React.Fragment key={globalIdx}>
             {i > 0 && (
               <span
-                className="mx-0.5 opacity-80 animate-appear"
-                style={{ animationDelay: `${globalIdx * 0.1}s`, opacity: 0, animationFillMode: 'forwards' }}
+                className="mx-0.5 opacity-80"
               >
                 -
               </span>
             )}
             <span
-              className={`${displayClass} animate-appear`}
-              style={{ animationDelay: `${globalIdx * 0.1}s`, opacity: 0, animationFillMode: 'forwards' }}
+              className={displayClass}
             >
               {num}
             </span>
@@ -51,8 +49,7 @@ const SequenceDisplay: React.FC<SequenceDisplayProps> = ({
 
   return (
     <div
-      className={`flex flex-col items-center select-none animate-pop w-full px-4 transition-all duration-500 ${countdown !== null ? "opacity-20" : "opacity-100"
-        }`}
+      className="flex flex-col items-center select-none w-full px-4 transition-all duration-500 opacity-100"
     >
       <div className="flex flex-col items-center gap-2 md:gap-4 transition-all duration-500">
         {renderRow(sequence.slice(0, midPoint), 0)}
