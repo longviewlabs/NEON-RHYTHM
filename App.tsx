@@ -77,9 +77,14 @@ const App: React.FC = () => {
   const sessionIdRef = useRef(0);
 
   // Tracking
+  const [status, setStatus] = useState<GameStatus>(GameStatus.LOADING);
+  const [currentBeat, setCurrentBeat] = useState(-1);
+  const [sequence, setSequence] = useState<number[]>([]);
+
   const statusRef = useRef<GameStatus>(GameStatus.LOADING);
   const currentBeatRef = useRef(-1);
   const sequenceRef = useRef<number[]>([]);
+  const fingerCountRef = useRef(0);
 
   // Sync refs with state
   useEffect(() => {
@@ -122,18 +127,12 @@ const App: React.FC = () => {
   // Ref to track if target was hit for each beat index (prevents race conditions)
   const hitBeatsRef = useRef<boolean[]>([]);
 
-  // Ref to track finger count inside intervals/closures
-  const fingerCountRef = useRef(0);
-
   // AI Results Refs (for logic and polling)
   const aiResultsRef = useRef<(boolean | null)[]>([]);
   const aiDetectedCountsRef = useRef<number[][]>([]);
 
   // Game State
-  const [status, setStatus] = useState<GameStatus>(GameStatus.LOADING);
   const [difficulty, setDifficulty] = useState<Difficulty>("EASY");
-  const [sequence, setSequence] = useState<number[]>([]);
-  const [currentBeat, setCurrentBeat] = useState(-1);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [scoringEngine, setScoringEngine] = useState<"local" | "ai">("local");
   const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
