@@ -537,9 +537,26 @@ const App: React.FC = () => {
       const newSequence: number[] = [];
       for (let i = 0; i < length; i++) {
         let nextNum;
+        let isInvalid = false;
         do {
           nextNum = Math.floor(Math.random() * 6); // 0-5
-        } while (i > 0 && nextNum === newSequence[i - 1]);
+          isInvalid = false;
+
+          // Rule 1: No immediate duplicates
+          if (i > 0 && nextNum === newSequence[i - 1]) {
+            isInvalid = true;
+          }
+
+          // Rule 2: No 3 consecutive numbers (1-2-3)
+          if (i >= 2) {
+            const prev1 = newSequence[i - 1];
+            const prev2 = newSequence[i - 2];
+            // Check Ascending (1-2-3)
+            if (prev2 === prev1 - 1 && prev1 === nextNum - 1) {
+              isInvalid = true;
+            }
+          }
+        } while (isInvalid);
         newSequence.push(nextNum);
       }
       return newSequence;
@@ -1036,17 +1053,17 @@ const App: React.FC = () => {
         }
 
         // 2. JUDGE BEATS
-        // Judgement happens slightly earlier (80%) to catch the pose before user transitions
-        // and REPLACES 'latching' with 'holding' requirement to avoid "too forgiving" feedback.
-        const judgeOffsetSec = intervalSec * 0.8;
+        // Re-enabled 'latching' (hasHitCurrentBeatRef) to handle performancejitters/dropped frames.
+        // Moved timing to 0.85 (85%) to give a slightly longer window while still avoiding late transitions.
+        const judgeOffsetSec = intervalSec * 0.85;
         while (
           nextJudgementBeat < seq.length &&
           firstBeatTime + nextJudgementBeat * intervalSec + judgeOffsetSec < currentTime
         ) {
           const beatIdx = nextJudgementBeat;
-          // STRICT MODE: Removed hasHitCurrentBeatRef latching.
-          // User MUST be holding the correct number at the moment of judgment.
-          const isHit = (fingerCountRef.current === seq[beatIdx]);
+          // PERMISSIVE MODE: Check if they hit it AT ANY POINT during the beat window.
+          // This is essential because webcams/CV can drop frames or flicker.
+          const isHit = hasHitCurrentBeatRef.current || (fingerCountRef.current === seq[beatIdx]);
 
           console.log(`[SYNC-JUDGE] Beat ${beatIdx}: isHit=${isHit} (target ${seq[beatIdx]}, ref ${fingerCountRef.current})`);
 
@@ -1494,9 +1511,9 @@ const App: React.FC = () => {
 
         {status === GameStatus.RESULT && (
           <div
-            className="flex flex-col items-center gap-4 md:gap-6 w-full max-w-4xl animate-pop px-3 md:px-4 overflow-y-auto no-scrollbar pb-4 max-h-full relative"
+            className="flex flex-col items-center justify-center gap-2 md:gap-6 w-full max-w-4xl animate-pop px-3 md:px-4 h-full relative"
             style={{
-              paddingBottom: 98,
+              paddingBottom: 20,
             }}
           >
             {(() => {
@@ -1523,15 +1540,15 @@ const App: React.FC = () => {
                 <div className="flex flex-col items-center relative gap-2 md:gap-4">
                   {/* BIG ANIMATED FAIL TITLE - Positioned naturally at top of flow */}
                   {hideForInfiniteFail && (
-                    <div className="z-[100] pointer-events-none mb-2 md:mb-6">
-                      <div className="text-[10rem] md:text-[16rem] font-black text-red-600 drop-shadow-[0_0_50px_rgba(220,38,38,0.8)] uppercase italic tracking-tighter animate-fail-stamp select-none">
+                    <div className="z-[100] pointer-events-none mb-1 md:mb-6">
+                      <div className="text-[7rem] md:text-[16rem] font-black text-red-600 drop-shadow-[0_0_50px_rgba(220,38,38,0.8)] uppercase italic tracking-tighter animate-fail-stamp select-none leading-none">
                         FAIL
                       </div>
                     </div>
                   )}
 
                   <div
-                    className="flex flex-col items-center animate-slide-up-pop"
+                    className="flex flex-col items-center animate-slide-up-pop w-full"
                     style={{
                       animationDelay: hideForInfiniteFail ? '0.7s' : '0s',
                       opacity: 0,
@@ -1539,14 +1556,14 @@ const App: React.FC = () => {
                     }}
                   >
                     {!isInfiniteMode && <Robot state={robotState} />}
-                    <div className="mt-2 mb-4 relative group">
+                    <div className="mt-1 mb-2 md:mb-4 relative group w-full max-w-sm">
                       <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 rounded-lg blur opacity-30 group-hover:opacity-50 transition duration-1000 group-hover:duration-200 animate-tilt"></div>
-                      <div className="relative px-8 py-4 bg-gradient-to-r from-blue-600/50 via-purple-600/50 to-pink-600/50 backdrop-blur-lg rounded-2xl border border-white/20 shadow-2xl flex items-center gap-4 md:gap-6">
-                        <span className="text-3xl md:text-5xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-blue-100 to-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] uppercase tracking-tighter pr-2 md:pr-4">
+                      <div className="relative px-4 py-3 md:px-8 md:py-4 bg-gradient-to-r from-blue-600/50 via-purple-600/50 to-pink-600/50 backdrop-blur-lg rounded-2xl border border-white/20 shadow-2xl flex flex-col md:flex-row items-center justify-center gap-1 md:gap-6">
+                        <span className="text-2xl md:text-5xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-blue-100 to-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] uppercase tracking-tighter">
                           {hideForInfiniteFail ? "GAME OVER" : `ROUND ${currentRound}`}
                         </span>
-                        <span className="text-white/30 text-2xl md:text-4xl font-light">|</span>
-                        <span className="text-xl md:text-3xl font-bold text-white/90 uppercase tracking-[0.1em]">
+                        <div className="hidden md:block text-white/30 text-2xl md:text-4xl font-light">|</div>
+                        <span className="text-sm md:text-3xl font-bold text-white/90 uppercase tracking-[0.1em]">
                           {hideForInfiniteFail
                             ? `MADE IT TO ROUND ${currentRound}`
                             : isPerfect
@@ -1556,7 +1573,7 @@ const App: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="flex flex-col items-center gap-4 md:gap-5 mt-10 md:mt-16">
+                    <div className="flex flex-col items-center gap-3 md:gap-5 mt-4 md:mt-16 w-full max-w-sm">
                       {isFinished && !isPerfect && (
                         <div className="flex flex-col items-center gap-4 w-full">
                           <button
