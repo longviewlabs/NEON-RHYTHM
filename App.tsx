@@ -48,6 +48,8 @@ const getAI = (apiKey: string) => {
   return genAIInstance;
 };
 
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
 const App: React.FC = () => {
   // Hardware Refs
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -90,8 +92,8 @@ const App: React.FC = () => {
   // Track Rotation State (Simplified to one track)
   const currentPattern: MusicType = 'happy_hardcore';
 
-  // Ref to track if target was hit at any point during the beat (Mobile optimization)
-  const hasHitCurrentBeatRef = useRef(false);
+  // Ref to track if target was hit for each beat index (prevents race conditions)
+  const hitBeatsRef = useRef<boolean[]>([]);
 
   // Ref to track finger count inside intervals/closures
   const fingerCountRef = useRef(0);
@@ -378,7 +380,7 @@ const App: React.FC = () => {
     aiResultsRef.current = [];
     aiDetectedCountsRef.current = [];
     setCurrentBeat(-1);
-    hasHitCurrentBeatRef.current = false;
+    hitBeatsRef.current = [];
   }, []);
 
   // Sync finger count ref and check for hits
@@ -393,10 +395,10 @@ const App: React.FC = () => {
     ) {
       if (
         fingerCount === sequence[currentBeat] &&
-        !hasHitCurrentBeatRef.current
+        !hitBeatsRef.current[currentBeat]
       ) {
         console.log(`[HIT] Beat ${currentBeat}: fingerCount=${fingerCount} matches target=${sequence[currentBeat]}`);
-        hasHitCurrentBeatRef.current = true;
+        hitBeatsRef.current[currentBeat] = true;
       }
     }
   }, [fingerCount, status, currentBeat, sequence]);
@@ -806,7 +808,7 @@ const App: React.FC = () => {
     setStatus(GameStatus.PLAYING);
     setRobotState("average");
     setCurrentBeat(-1);
-    hasHitCurrentBeatRef.current = false;
+    hitBeatsRef.current = new Array(newSequence.length).fill(false);
 
     const targetBPM =
       bpmOverride ||
@@ -1013,7 +1015,6 @@ const App: React.FC = () => {
           const uiDelay = Math.max(0, (beatTime - currentTime) * 1000 - 15);
           const uiTimer = setTimeout(() => {
             if (sessionIdRef.current !== currentSessionId) return;
-            hasHitCurrentBeatRef.current = false;
             console.log(`[SYNC-UI] Beat ${beatIdx}: target=${seq[beatIdx]} @ ${beatTime.toFixed(3)}s`);
             setCurrentBeat(beatIdx);
           }, uiDelay);
@@ -1053,9 +1054,8 @@ const App: React.FC = () => {
         }
 
         // 2. JUDGE BEATS
-        // Re-enabled 'latching' (hasHitCurrentBeatRef) to handle performancejitters/dropped frames.
-        // Moved timing to 0.85 (85%) to give a slightly longer window while still avoiding late transitions.
-        const judgeOffsetSec = intervalSec * 0.85;
+        // Widen window for mobile (95% instead of 85%) to account for detection lag
+        const judgeOffsetSec = intervalSec * (isMobile ? 0.95 : 0.85);
         while (
           nextJudgementBeat < seq.length &&
           firstBeatTime + nextJudgementBeat * intervalSec + judgeOffsetSec < currentTime
@@ -1063,7 +1063,7 @@ const App: React.FC = () => {
           const beatIdx = nextJudgementBeat;
           // PERMISSIVE MODE: Check if they hit it AT ANY POINT during the beat window.
           // This is essential because webcams/CV can drop frames or flicker.
-          const isHit = hasHitCurrentBeatRef.current || (fingerCountRef.current === seq[beatIdx]);
+          const isHit = hitBeatsRef.current[beatIdx] || (fingerCountRef.current === seq[beatIdx]);
 
           console.log(`[SYNC-JUDGE] Beat ${beatIdx}: isHit=${isHit} (target ${seq[beatIdx]}, ref ${fingerCountRef.current})`);
 
