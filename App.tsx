@@ -1093,7 +1093,7 @@ const App: React.FC = () => {
         // 2. JUDGE BEATS
         // Judgement happens slightly earlier (80%) to catch the pose before user transitions
         // and REPLACES 'latching' with 'holding' requirement to avoid "too forgiving" feedback.
-        const judgeOffsetSec = intervalSec * 0.85;
+        const judgeOffsetSec = intervalSec * 0.90;
         while (
           nextJudgementBeat < seq.length &&
           firstBeatTime + nextJudgementBeat * intervalSec + judgeOffsetSec <
