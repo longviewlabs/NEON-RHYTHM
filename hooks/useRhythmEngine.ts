@@ -71,6 +71,7 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
 
     // Synthesis Functions
     const playKick = useCallback((time: number) => {
+        /*
         if (!audioContext) return;
         const osc = audioContext.createOscillator();
         const gainNode = audioContext.createGain();
@@ -86,9 +87,11 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
 
         osc.start(time);
         osc.stop(time + 0.3);
+        */
     }, [audioContext, connectToDest]);
 
     const playSnare = useCallback((time: number) => {
+        /*
         if (!audioContext || !noiseBufferRef.current) return;
         const noiseSource = audioContext.createBufferSource();
         noiseSource.buffer = noiseBufferRef.current;
@@ -114,9 +117,11 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
         oscGain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
         osc.start(time);
         osc.stop(time + 0.1);
+        */
     }, [audioContext, connectToDest]);
 
     const playHiHat = useCallback((time: number) => {
+        /*
         if (!audioContext || !noiseBufferRef.current) return;
         const source = audioContext.createBufferSource();
         source.buffer = noiseBufferRef.current;
@@ -131,9 +136,11 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
         gainNode.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
         source.start(time);
         source.stop(time + 0.05);
+        */
     }, [audioContext, connectToDest]);
 
     const playRide = useCallback((time: number) => {
+        /*
         if (!audioContext || !noiseBufferRef.current) return;
 
         const fundamental = 300;
@@ -169,9 +176,11 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
         noiseGain.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
         noise.start(time);
         noise.stop(time + 0.3);
+        */
     }, [audioContext, connectToDest]);
 
     const playMelodyNote = useCallback((time: number, freq: number) => {
+        /*
         if (!audioContext) return;
         // Super Saw effect: 2 detuned oscillators
         const osc1 = audioContext.createOscillator();
@@ -203,6 +212,7 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
         osc2.start(time);
         osc1.stop(time + 0.25);
         osc2.stop(time + 0.25);
+        */
     }, [audioContext, connectToDest]);
 
     // Scheduling Engine
@@ -215,6 +225,7 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
         if (pattern.ride?.[beatNumber]) playRide(time);
 
         if (pattern.bass?.[beatNumber]) {
+            /*
             // High Saw bass with filter sweep
             const osc = audioContext?.createOscillator();
             const gain = audioContext?.createGain();
@@ -235,6 +246,7 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
                 osc.start(time);
                 osc.stop(time + 0.3);
             }
+            */
         }
 
         // Melody
@@ -275,7 +287,7 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
         measureRef.current = 0;
         nextNoteTimeRef.current = startTime || audioContext.currentTime + 0.1;
         isActiveRef.current = true;
-        scheduler();
+        // scheduler(); // DISABLED SCHEDULER
     }, [audioContext, scheduler]);
 
     const stop = useCallback(() => {
