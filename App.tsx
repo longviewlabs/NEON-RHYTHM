@@ -81,6 +81,7 @@ const App: React.FC = () => {
 
   // Memory & Timer Management
   const gameTimersRef = useRef<(number | NodeJS.Timeout)[]>([]);
+  const rafIdRef = useRef<number | null>(null);
   const gameIdRef = useRef(0);
   const sessionIdRef = useRef(0);
 
@@ -402,7 +403,7 @@ const App: React.FC = () => {
 
   // Memory Cleanup: Clear all temp data, timers and frames
   const cleanupTempData = useCallback(() => {
-    // Clear all ghost loops and timers
+    // 1. Clear standard timers
     gameTimersRef.current.forEach((id) => {
       if (id) {
         clearInterval(id as any);
@@ -410,6 +411,12 @@ const App: React.FC = () => {
       }
     });
     gameTimersRef.current = [];
+
+    // 2. Kill the high-frequency game loop (CPU fix)
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
 
     // Reset heavy state
     setCapturedFrames([]);
@@ -848,19 +855,19 @@ const App: React.FC = () => {
       // Find the next bar start that gives us enough time for the countdown.
       firstBeatTime = rhythmEngine.getNextDownbeat(2.4); // Safe for countdown at 100bpm
     } else {
-      // START TRACK:
+      // START TRACK (Fresh Game):
       const musicStartTime = ctx.currentTime + 0.1;
       const beatDuration = 60 / targetBPM;
       firstBeatTime = musicStartTime + 4 * beatDuration; // 4-beat lead-in
 
       rhythmEngine.start(targetBPM, "happy_hardcore", musicStartTime);
+
+      // Only start/reset recording on a fresh game
+      // This keeps the recording continuous during round transitions
+      startRecording();
     }
 
-    // Start Video Recording immediately
-    startRecording();
-
-    // FIX: Start both coordination and sequence runner immediately
-    // This ensures the game loop is already 'watching' during the countdown
+    // Start countdown coordination
     startCountdown(newSequence, currentSessionId, firstBeatTime, targetBPM);
     runSequence(newSequence, currentSessionId, firstBeatTime, targetBPM);
   };
@@ -983,7 +990,6 @@ const App: React.FC = () => {
     firstBeatTime: number,
     bpm: number
   ) => {
-    const interval = 60000 / bpm;
     const intervalSec = 60 / bpm;
 
     // The FIRST beat happens at this absolute AudioContext time
@@ -1035,11 +1041,11 @@ const App: React.FC = () => {
           const uiDelay = Math.max(0, (beatTime - currentTime) * 1000 - 15);
           const uiTimer = setTimeout(() => {
             if (sessionIdRef.current !== currentSessionId) return;
-            console.log(
-              `[SYNC-UI] Beat ${beatIdx}: target=${
-                seq[beatIdx]
-              } @ ${beatTime.toFixed(3)}s`
-            );
+            // console.log(
+            //   `[SYNC-UI] Beat ${beatIdx}: target=${
+            //     seq[beatIdx]
+            //   } @ ${beatTime.toFixed(3)}s`
+            // );
             setCurrentBeat(beatIdx);
           }, uiDelay);
           gameTimersRef.current.push(uiTimer);
@@ -1099,9 +1105,9 @@ const App: React.FC = () => {
           // it counts as a success, which handles MediaPipe flickering (especially for 0).
           const isHit = hitBeatsRef.current[beatIdx] || fingerCountRef.current === seq[beatIdx];
 
-          console.log(
-            `[SYNC-JUDGE] Beat ${beatIdx}: isHit=${isHit} (target ${seq[beatIdx]}, ref ${fingerCountRef.current}, latched ${hitBeatsRef.current[beatIdx]})`
-          );
+          // console.log(
+          //   `[SYNC-JUDGE] Beat ${beatIdx}: isHit=${isHit} (target ${seq[beatIdx]}, ref ${fingerCountRef.current}, latched ${hitBeatsRef.current[beatIdx]})`
+          // );
 
           results[beatIdx] = isHit;
           setLocalResults([...results]);
@@ -1174,9 +1180,8 @@ const App: React.FC = () => {
             return;
           }
         }
-        // Use requestAnimationFrame for smoother scheduler loop
-        const timer = requestAnimationFrame(scheduler);
-        gameTimersRef.current.push(timer as any);
+        // FIX: Update the dedicated ref to prevent loop stacking
+        rafIdRef.current = requestAnimationFrame(scheduler);
       };
       scheduler();
     };
