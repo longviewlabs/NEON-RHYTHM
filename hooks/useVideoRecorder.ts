@@ -197,19 +197,27 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
                 ctx.restore();
 
                 const barY = canvas.height * 0.55;
-                const barH = 100;
-                ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+                const barH = 120; // Increased height to accommodate two lines
+                ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
                 ctx.fillRect(0, barY - barH / 2, canvas.width, barH);
                 
                 ctx.fillStyle = "white";
                 ctx.font = "900 30px Inter, sans-serif";
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
-                ctx.fillText(`GAME OVER | ROUND ${failInfo.round}`, canvas.width / 2, barY);
+                
+                // Draw "GAME OVER" on first line
+                ctx.fillText("GAME OVER", canvas.width / 2, barY - 15);
+                
+                // Draw "Failed at round X" on second line
+                ctx.font = "900 26px Inter, sans-serif";
+                ctx.fillText(`Made it to round ${failInfo.round}`, canvas.width / 2, barY + 20);
             }
 
             // 6. Draw Game Overlay Text - Round info + sequence centered in middle
             const lines = preSplitLinesRef.current;
+            
+            // Show overlay text only if we have lines and fail overlay is NOT active
             if (lines.length > 0 && !failInfo.show) {
                 ctx.save();
                 if (!isMobile) {
@@ -235,7 +243,7 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
                 const maxWidth = canvas.width - 40; // 20px padding on each side
                 const wrappedSeqLines: string[] = [];
                 
-                if (sequenceLine) {
+                if (sequenceLine && !failInfo.show) {
                     ctx.font = `900 ${seqFontSize}px Inter, sans-serif`;
                     // Convert spaces to dashes for display (e.g., "1 2 [[3]] 4" -> "1-2-[[3]]-4")
                     const sequenceWithDashes = sequenceLine.replace(/ /g, "-");
@@ -273,10 +281,11 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
                 ctx.fillText(roundText, canvas.width / 2, startY + roundFontSize);
 
                 // Draw sequence lines below
-                ctx.font = `900 ${seqFontSize}px Inter, sans-serif`;
-                const seqStartY = startY + roundLineHeight + gapBetween + seqFontSize / 2;
+                if (wrappedSeqLines.length > 0) {
+                    ctx.font = `900 ${seqFontSize}px Inter, sans-serif`;
+                    const seqStartY = startY + roundLineHeight + gapBetween + seqFontSize / 2;
 
-                wrappedSeqLines.forEach((line, lineIndex) => {
+                    wrappedSeqLines.forEach((line, lineIndex) => {
                     const y = seqStartY + lineIndex * seqLineHeight;
                     const x = canvas.width / 2;
 
@@ -309,7 +318,8 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
                         ctx.strokeText(line, x, y);
                         ctx.fillText(line, x, y);
                     }
-                });
+                    });
+                }
                 ctx.restore();
             }
             rafIdRef.current = requestAnimationFrame(draw);

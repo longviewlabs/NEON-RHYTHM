@@ -226,13 +226,22 @@ const App: React.FC = () => {
     const isPerfect = isFinished && currentCorrect === sequence.length;
     const isGameOver = isFinished && !isPerfect;
 
-    // Stop recording on Game Over or if we return to the main loading/start screen
-    const shouldStop =
-      (status === GameStatus.RESULT && isGameOver) ||
+    // Stop recording on Game Over (with 5s delay to capture fail reaction) or if we return to the main loading/start screen
+    const shouldStopImmediately =
       (status === GameStatus.LOADING && isRecording);
+    
+    const shouldStopWithDelay =
+      (status === GameStatus.RESULT && isGameOver);
 
-    if (shouldStop && isRecording) {
+    if (shouldStopImmediately && isRecording) {
       stopRecording();
+    } else if (shouldStopWithDelay && isRecording) {
+      // Delay 5 seconds to capture user's fail reaction
+      const timeoutId = setTimeout(() => {
+        stopRecording();
+      }, 5000);
+      
+      return () => clearTimeout(timeoutId);
     }
   }, [
     status,
@@ -523,11 +532,8 @@ const App: React.FC = () => {
                   `ROUND ${currentRound} ${statusText}\\nSCORE: ${totalCorrect}/${sequence.length}`
                 );
 
-                // Update Export Overlay for final result
-                if (isInfiniteMode && !isPerfect) {
-                  setFailOverlay({ show: true, round: currentRound });
-                  console.log("[Instrument] export_ready");
-                }
+                // Note: Fail overlay is set in runSequence when user actually fails during gameplay
+                // No need to set it here in result screen logic
 
                 // SILENCE FINAL SOUNDS IN INFINITE MODE
                 if (!isInfiniteMode) {
@@ -812,6 +818,9 @@ const App: React.FC = () => {
     sessionIdRef.current = currentSessionId;
 
     cleanupTempData(); // Clear memory/timers from previous rounds
+
+    // Clear fail overlay at the start of each game/round
+    setFailOverlay({ show: false, round: currentRoundRef.current });
 
     const targetDifficulty = forcedDifficulty || difficulty;
     const length =
@@ -1143,6 +1152,7 @@ const App: React.FC = () => {
             if (isInfiniteMode) {
               playOneShot("win");
               setRobotState("happy");
+              setFailOverlay({ show: false, round: currentRoundRef.current }); // Clear fail overlay on success
               setOverlayText(`ROUND ${currentRoundRef.current} CLEARED!`);
               setOverlayText(`ROUND ${currentRoundRef.current} CLEARED!`);
               const transitionTimer = setTimeout(() => {
