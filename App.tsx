@@ -859,8 +859,10 @@ const App: React.FC = () => {
     // Start Video Recording immediately
     startRecording();
 
-    // Start countdown coordination
+    // FIX: Start both coordination and sequence runner immediately
+    // This ensures the game loop is already 'watching' during the countdown
     startCountdown(newSequence, currentSessionId, firstBeatTime, targetBPM);
+    runSequence(newSequence, currentSessionId, firstBeatTime, targetBPM);
   };
 
   // Handle "Start Game" button click (merged from handleEnterStudio)
@@ -968,7 +970,7 @@ const App: React.FC = () => {
         } else {
           setCountdown(null);
           playCountdownBeep(0);
-          runSequence(newSequence, currentSessionId, firstBeatTime, bpm);
+          // REMOVED: runSequence is now called immediately in startGame
         }
       }, delay);
       gameTimersRef.current.push(timerId);
