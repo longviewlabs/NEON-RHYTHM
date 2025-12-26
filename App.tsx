@@ -561,7 +561,7 @@ const App: React.FC = () => {
         let nextNum;
         let isInvalid = false;
         do {
-          nextNum = Math.floor(Math.random() * 6); // 0-5
+          nextNum = Math.floor(Math.random() * 5) + 1; // 1-5 (removed 0)
           isInvalid = false;
 
           // Rule 1: No immediate duplicates
@@ -1206,7 +1206,7 @@ const App: React.FC = () => {
 
       const prompt = `
         Analyze these 3 snaps of a player's hand. 
-        Target number of fingers: ${target} (Note: 0 means a closed fist or no fingers extended).
+        Target number of fingers: ${target}.
         Return JSON format: { "success": boolean, "detected_count": number[] }
         The 'detected_count' array must have exactly 3 numbers representing what you saw in each snapshot.
       `;
