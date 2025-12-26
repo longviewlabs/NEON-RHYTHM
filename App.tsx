@@ -864,7 +864,7 @@ const App: React.FC = () => {
 
       // Only start/reset recording on a fresh game
       // This keeps the recording continuous during round transitions
-    //   startRecording();
+      startRecording();
     }
 
     // Start countdown coordination
