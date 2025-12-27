@@ -41,8 +41,7 @@ export const shareVideo = async (
         }
     }
 
-    // 2. Fallback: Trigger download
-    saveVideo(file);
+    // 2. Fallback: Return fallback method so the UI can show instructions
     return { success: true, method: 'fallback' };
 };
 
@@ -83,26 +82,26 @@ export const getPlatformInstructions = (target: ShareTarget): string[] => {
     switch (target) {
         case 'tiktok':
             return [
-                'Video saved. Upload it to TikTok.',
+                'Save the video to your device.',
                 'Open TikTok and tap the + button.',
                 'Select the video from your gallery.',
                 'Add #NeonRhythm and post!'
             ];
         case 'instagram':
             return [
-                'Video saved. Upload it to Instagram.',
+                'Save the video to your device.',
                 'Open Instagram Reels to upload.',
                 'If sharing from PC, use a mobile browser or app for best results.',
                 'Share it with your followers!'
             ];
         case 'youtube':
             return [
-                'Video saved. Upload it to YouTube.',
+                'Save the video to your device.',
                 'Open YouTube and tap Create.',
                 'Select your video from the gallery.',
                 'Publish your masterpiece!'
             ];
         default:
-            return ['Video downloaded. You can now share it manually.'];
+            return ['Download the video to share it wherever you want.'];
     }
 };

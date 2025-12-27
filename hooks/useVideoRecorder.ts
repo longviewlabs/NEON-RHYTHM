@@ -87,10 +87,10 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
         failInfoRef.current = { show: false, round: 1 };
 
         const canvas = canvasRef.current;
-        const ctx = canvas.getContext("2d", { 
+        const ctx = canvas.getContext("2d", {
             alpha: false,
             desynchronized: true // Performance hint for low-latency drawing
-        }); 
+        });
         const video = videoRef.current;
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
@@ -140,11 +140,12 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
             ctx.fillStyle = "white";
             ctx.strokeStyle = "rgba(0,0,0,0.7)";
             ctx.lineWidth = 4;
-            const topFontSize = isMobile ? 16 : 20;
+            const topFontSize = isMobile ? 18 : 24; // Slightly larger for impact
             ctx.font = `900 ${topFontSize}px Inter, sans-serif`;
             ctx.textAlign = "center";
-            ctx.strokeText("Only 1% people can do this...", canvas.width / 2, 32 + topFontSize);
-            ctx.fillText("Only 1% people can do this...", canvas.width / 2, 32 + topFontSize);
+            const hookText = "Most people fail at Round 3";
+            ctx.strokeText(hookText, canvas.width / 2, 60);
+            ctx.fillText(hookText, canvas.width / 2, 60);
             ctx.restore();
 
             // 4. Draw Bottom Right Watermark - "FINGERRHYTHM.COM" with colors
@@ -156,7 +157,7 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
             const watermarkFontSize = isMobile ? 14 : 18;
             ctx.font = `900 ${watermarkFontSize}px Inter, sans-serif`;
             ctx.textAlign = "right";
-            
+
             // Measure each part to position correctly
             const fingerText = "FINGER";
             const rhythmText = "RHYTHM";
@@ -164,23 +165,23 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
             const fingerWidth = ctx.measureText(fingerText).width;
             const rhythmWidth = ctx.measureText(rhythmText).width;
             const comWidth = ctx.measureText(comText).width;
-            
+
             const totalWatermarkWidth = fingerWidth + rhythmWidth + comWidth;
             const startX = canvas.width - 20 - totalWatermarkWidth;
             const bottomY = canvas.height - 20;
-            
+
             // Draw FINGER in red
             ctx.fillStyle = "#fff";
             ctx.textAlign = "left";
             ctx.fillText(fingerText, startX, bottomY);
-            
+
             // Draw RHYTHM in dark gray with white stroke
             ctx.strokeStyle = "white";
             ctx.lineWidth = 2;
             ctx.strokeText(rhythmText, startX + fingerWidth, bottomY);
             ctx.fillStyle = "#262626";
             ctx.fillText(rhythmText, startX + fingerWidth, bottomY);
-            
+
             // Draw .COM in red
             ctx.fillStyle = "#fff";
             ctx.fillText(comText, startX + fingerWidth + rhythmWidth, bottomY);
@@ -189,46 +190,72 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
             // 5. Draw Fail Overlays
             const failInfo = failInfoRef.current;
             if (failInfo.show) {
-                ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
                 ctx.save();
                 ctx.translate(canvas.width / 2, canvas.height * 0.35);
-                ctx.rotate(-0.1);
+                ctx.rotate(-10 * Math.PI / 180); // Match UI rotation (-10deg)
+
+                // 1. Draw "FAIL"
                 if (!isMobile) {
                     ctx.shadowColor = "rgba(220, 38, 38, 0.8)";
                     ctx.shadowBlur = 40;
                 }
                 ctx.fillStyle = "#dc2626";
-                ctx.font = "black 150px Inter, sans-serif";
+                ctx.font = "900 150px Inter, sans-serif";
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
                 ctx.fillText("FAIL", 0, 0);
-                ctx.restore();
 
-                const barY = canvas.height * 0.55;
-                const barH = 120; // Increased height to accommodate two lines
-                ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
-                ctx.fillRect(0, barY - barH / 2, canvas.width, barH);
-                
+                // 2. Draw Subheadline "Made it to Round X"
+                const subHeadline = `MADE IT TO ROUND ${failInfo.round}`;
+
+                // Align with left edge of FAIL
+                ctx.font = "900 150px Inter, sans-serif";
+                const failWidth = ctx.measureText("FAIL").width;
+                const leftEdge = (-failWidth / 2) + 4;
+
+                // Dynamically calculate font size to match FAIL width
+                ctx.font = `900 30px Inter, sans-serif`;
+                const currentWidth = ctx.measureText(subHeadline).width;
+                const subFontSize = Math.floor(30 * (failWidth / currentWidth));
+
+                ctx.font = `900 ${subFontSize}px Inter, sans-serif`;
                 ctx.fillStyle = "white";
-                ctx.font = "900 30px Inter, sans-serif";
+
+                // shadow for contrast
+                ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
+                ctx.shadowBlur = 4;
+                ctx.shadowOffsetX = 2;
+                ctx.shadowOffsetY = 2;
+
+                ctx.textAlign = "left";
+                // Positioned tightly under FAIL (was 65)
+                ctx.fillText(subHeadline, leftEdge, 55);
+                ctx.restore();
+            }
+
+            const lines = preSplitLinesRef.current;
+
+            // 5.5 Draw Countdown (if active)
+            const countdownLine = lines.find(line => line.startsWith("COUNTDOWN:"));
+            if (countdownLine) {
+                const count = countdownLine.split(":")[1];
+                ctx.save();
+                ctx.font = "900 180px Inter, sans-serif";
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
-                
-                // Draw "GAME OVER" on first line
-                ctx.fillText("GAME OVER", canvas.width / 2, barY - 15);
-                
-                // Draw "Failed at round X" on second line
-                ctx.font = "900 26px Inter, sans-serif";
-                ctx.fillText(`Made it to round ${failInfo.round}`, canvas.width / 2, barY + 20);
+                ctx.fillStyle = "white";
+                if (!isMobile) {
+                    ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
+                    ctx.shadowBlur = 30;
+                }
+                ctx.fillText(count, canvas.width / 2, canvas.height / 2);
+                ctx.restore();
             }
 
             // 6. Draw Game Overlay Text - Round info + sequence centered in middle
-            const lines = preSplitLinesRef.current;
-            
-            // Show overlay text only if we have lines and fail overlay is NOT active
-            if (lines.length > 0 && !failInfo.show) {
+
+            // Show overlay text only if we have lines
+            if (lines.length > 0) {
                 ctx.save();
                 if (!isMobile) {
                     ctx.shadowColor = "black";
@@ -243,16 +270,16 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
                 ctx.textAlign = "center";
 
                 // Find the sequence line (contains numbers with spaces or brackets, but NOT "ROUND" lines)
-                const sequenceLine = lines.find(line => 
-                    !line.startsWith("ROUND") && 
-                    /\d/.test(line) && 
+                const sequenceLine = lines.find(line =>
+                    !line.startsWith("ROUND") &&
+                    /\d/.test(line) &&
                     (line.includes(" ") || line.includes("[["))
                 );
-                
+
                 // Calculate layout
                 const maxWidth = canvas.width - 40; // 20px padding on each side
                 const wrappedSeqLines: string[] = [];
-                
+
                 if (sequenceLine && !failInfo.show) {
                     ctx.font = `900 ${seqFontSize}px Inter, sans-serif`;
                     // Convert spaces to dashes for display (e.g., "1 2 [[3]] 4" -> "1-2-[[3]]-4")
@@ -260,7 +287,7 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
                     // Split by dash but keep the dash in display
                     const sequenceItems = sequenceWithDashes.split("-");
                     let currentLine = "";
-                    
+
                     for (let i = 0; i < sequenceItems.length; i++) {
                         const item = sequenceItems[i];
                         const separator = i > 0 ? "-" : "";
@@ -276,67 +303,58 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
                     if (currentLine) wrappedSeqLines.push(currentLine);
                 }
 
-                // Calculate total height: round line + gap + sequence lines
-                const roundLineHeight = roundFontSize * 1.3;
+                // Calculate total height: sequence lines only
                 const seqLineHeight = seqFontSize * 1.5;
-                const gapBetween = 20;
-                const totalHeight = roundLineHeight + gapBetween + (wrappedSeqLines.length * seqLineHeight);
+                const totalHeight = wrappedSeqLines.length * seqLineHeight;
                 const startY = (canvas.height - totalHeight) / 2;
 
-                // Draw Round + BPM line
-                ctx.font = `900 ${roundFontSize}px Inter, sans-serif`;
-                ctx.fillStyle = "white";
-                const roundText = `ROUND ${currentRoundRef.current} - ${currentBpmRef.current}bpm`;
-                ctx.strokeText(roundText, canvas.width / 2, startY + roundFontSize);
-                ctx.fillText(roundText, canvas.width / 2, startY + roundFontSize);
-
-                // Draw sequence lines below
+                // Draw sequence lines
                 if (wrappedSeqLines.length > 0) {
                     ctx.font = `900 ${seqFontSize}px Inter, sans-serif`;
-                    const seqStartY = startY + roundLineHeight + gapBetween + seqFontSize / 2;
+                    const seqStartY = startY + seqFontSize / 2;
 
                     wrappedSeqLines.forEach((line, lineIndex) => {
-                    const y = seqStartY + lineIndex * seqLineHeight;
-                    const x = canvas.width / 2;
+                        const y = seqStartY + lineIndex * seqLineHeight;
+                        const x = canvas.width / 2;
 
-                    if (line.includes("[[") && line.includes("]]")) {
-                        // Split by brackets but keep the bracket content
-                        const segments = line.split(/(\[\[.*?\]\])/g);
-                        const cleanLine = line.replace(/\[\[|\]\]/g, "");
-                        const lineWidth = ctx.measureText(cleanLine).width;
-                        let currentX = x - lineWidth / 2;
+                        if (line.includes("[[") && line.includes("]]")) {
+                            // Split by brackets but keep the bracket content
+                            const segments = line.split(/(\[\[.*?\]\])/g);
+                            const cleanLine = line.replace(/\[\[|\]\]/g, "");
+                            const lineWidth = ctx.measureText(cleanLine).width;
+                            let currentX = x - lineWidth / 2;
 
-                        segments.forEach((segment) => {
-                            if (!segment) return;
-                            if (segment.startsWith("[[") && segment.endsWith("]]")) {
-                                // Highlighted number (current beat)
-                                const text = segment.slice(2, -2);
-                                ctx.fillStyle = "#FACC15";
-                                // Temporarily removed stroke
-                                // const originalStroke = ctx.strokeStyle;
-                                // const originalLineWidth = ctx.lineWidth;
-                                // ctx.strokeStyle = "rgba(0,0,0,1.0)";
-                                // ctx.lineWidth = 3;
-                                // ctx.strokeText(text, currentX + ctx.measureText(text).width / 2, y);
-                                ctx.fillText(text, currentX + ctx.measureText(text).width / 2, y);
-                                // ctx.strokeStyle = originalStroke;
-                                // ctx.lineWidth = originalLineWidth;
-                                currentX += ctx.measureText(text).width;
-                            } else {
-                                // Normal text (numbers and dashes)
-                                ctx.fillStyle = "white";
-                                // Temporarily removed stroke
-                                // ctx.strokeText(segment, currentX + ctx.measureText(segment).width / 2, y);
-                                ctx.fillText(segment, currentX + ctx.measureText(segment).width / 2, y);
-                                currentX += ctx.measureText(segment).width;
-                            }
-                        });
-                    } else {
-                        ctx.fillStyle = "white";
-                        // Temporarily removed stroke
-                        // ctx.strokeText(line, x, y);
-                        ctx.fillText(line, x, y);
-                    }
+                            segments.forEach((segment) => {
+                                if (!segment) return;
+                                if (segment.startsWith("[[") && segment.endsWith("]]")) {
+                                    // Highlighted number (current beat)
+                                    const text = segment.slice(2, -2);
+                                    ctx.fillStyle = "#FACC15";
+                                    // Temporarily removed stroke
+                                    // const originalStroke = ctx.strokeStyle;
+                                    // const originalLineWidth = ctx.lineWidth;
+                                    // ctx.strokeStyle = "rgba(0,0,0,1.0)";
+                                    // ctx.lineWidth = 3;
+                                    // ctx.strokeText(text, currentX + ctx.measureText(text).width / 2, y);
+                                    ctx.fillText(text, currentX + ctx.measureText(text).width / 2, y);
+                                    // ctx.strokeStyle = originalStroke;
+                                    // ctx.lineWidth = originalLineWidth;
+                                    currentX += ctx.measureText(text).width;
+                                } else {
+                                    // Normal text (numbers and dashes)
+                                    ctx.fillStyle = "white";
+                                    // Temporarily removed stroke
+                                    // ctx.strokeText(segment, currentX + ctx.measureText(segment).width / 2, y);
+                                    ctx.fillText(segment, currentX + ctx.measureText(segment).width / 2, y);
+                                    currentX += ctx.measureText(segment).width;
+                                }
+                            });
+                        } else {
+                            ctx.fillStyle = "white";
+                            // Temporarily removed stroke
+                            // ctx.strokeText(line, x, y);
+                            ctx.fillText(line, x, y);
+                        }
                     });
                 }
                 ctx.restore();
