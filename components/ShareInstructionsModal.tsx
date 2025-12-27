@@ -8,6 +8,8 @@ interface ShareInstructionsModalProps {
     target: ShareTarget;
     onDownload: () => void;
     isDownloaded: boolean;
+    showSaveToast?: boolean;
+    roundNumber?: number;
 }
 
 const ShareInstructionsModal: React.FC<ShareInstructionsModalProps> = ({
@@ -16,6 +18,8 @@ const ShareInstructionsModal: React.FC<ShareInstructionsModalProps> = ({
     target,
     onDownload,
     isDownloaded,
+    showSaveToast = false,
+    roundNumber = 1,
 }) => {
     if (!isOpen) return null;
 
@@ -23,9 +27,10 @@ const ShareInstructionsModal: React.FC<ShareInstructionsModalProps> = ({
     const uploadUrl = getPlatformUploadUrl(target);
     const platformLabel = target.charAt(0).toUpperCase() + target.slice(1);
 
-    const handleCopyLink = () => {
-        navigator.clipboard.writeText(window.location.href);
-        alert('Link copied to clipboard!');
+    const handleCopyCaption = () => {
+        const caption = `I made it to Round ${roundNumber} on Finger Rhythm. Can you beat me? fingerrhythm.com`;
+        navigator.clipboard.writeText(caption);
+        alert('Caption copied to clipboard!');
     };
 
     return (
@@ -42,54 +47,28 @@ const ShareInstructionsModal: React.FC<ShareInstructionsModalProps> = ({
                     <div className="flex flex-col gap-6">
                         <div className="text-center mb-2">
                             <h2 className="text-2xl font-black uppercase tracking-tight">
-                                Share Options
+                                SHARE THIS VIDEO
                             </h2>
-                            <p className="text-white/40 text-xs mt-1">Choose how you want to share your run</p>
+                            <p className="text-white/80 text-sm font-medium mt-4 leading-relaxed">
+                                A video of you playing has been recorded.<br />Download the clip, then upload it wherever you want 🙌
+                            </p>
                         </div>
 
                         <div className="flex flex-col gap-3">
-                            <button
-                                onClick={onDownload}
-                                className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
-                            >
-                                <Download size={20} />
-                                {isDownloaded ? "Download Again" : "Download Video"}
-                            </button>
-
-                            <button
-                                onClick={handleCopyLink}
-                                className="w-full py-4 bg-white/5 hover:bg-white/10 text-white font-black uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95 border border-white/10"
-                            >
-                                <ExternalLink size={20} />
-                                Copy Link
-                            </button>
-
-                            <div className="h-px bg-white/10 my-2" />
-
-                            <a
-                                href={getPlatformUploadUrl('tiktok')}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="w-full py-4 bg-white/5 hover:bg-white/10 text-white font-black uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95 border border-white/10"
-                            >
-                                Open TikTok
-                            </a>
-                            <a
-                                href={getPlatformUploadUrl('instagram')}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="w-full py-4 bg-white/5 hover:bg-white/10 text-white font-black uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95 border border-white/10"
-                            >
-                                Open Instagram
-                            </a>
-                            <a
-                                href={getPlatformUploadUrl('youtube')}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="w-full py-4 bg-white/5 hover:bg-white/10 text-white font-black uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95 border border-white/10"
-                            >
-                                Open YouTube
-                            </a>
+                            <div className="relative w-full">
+                                <button
+                                    onClick={onDownload}
+                                    className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-blue-500/20"
+                                >
+                                    <Download size={20} />
+                                    Save video
+                                </button>
+                                {showSaveToast && (
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-[150] px-4 py-2 bg-green-600 text-white text-[10px] font-bold rounded-full shadow-2xl animate-fade-in border border-white/20 backdrop-blur-md whitespace-nowrap">
+                                        Video downloaded
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 ) : (
@@ -119,15 +98,20 @@ const ShareInstructionsModal: React.FC<ShareInstructionsModalProps> = ({
                         </div>
 
                         <div className="flex flex-col gap-3">
-                            {!isDownloaded && (
+                            <div className="relative w-full">
                                 <button
                                     onClick={onDownload}
                                     className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
                                 >
                                     <Download size={20} />
-                                    Download Video
+                                    Save video
                                 </button>
-                            )}
+                                {showSaveToast && (
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-[150] px-4 py-2 bg-green-600 text-white text-[10px] font-bold rounded-full shadow-2xl animate-fade-in border border-white/20 backdrop-blur-md whitespace-nowrap">
+                                        Video downloaded
+                                    </div>
+                                )}
+                            </div>
 
                             {uploadUrl && (
                                 <a
@@ -137,7 +121,7 @@ const ShareInstructionsModal: React.FC<ShareInstructionsModalProps> = ({
                                     className="w-full py-4 bg-white/10 hover:bg-white/20 text-white font-black uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95 border border-white/10"
                                 >
                                     <ExternalLink size={20} />
-                                    Open {platformLabel}
+                                    {platformLabel}
                                 </a>
                             )}
                         </div>
