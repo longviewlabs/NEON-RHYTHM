@@ -1203,7 +1203,10 @@ const App: React.FC = () => {
                 infiniteLengthRef.current = nextLength;
                 infiniteBpmRef.current = nextBpm;
 
-                // Don't update display state yet - wait until new sequence is generated in startGame()
+                // UPDATE: Set display state immediately so TRANSITION screen shows correct values
+                setCurrentRound(nextRound);
+                setCurrentBpm(Math.round(nextBpm));
+                setCurrentLength(nextLength);
 
                 // ENTER TRANSITION STATE
                 setStatus(GameStatus.TRANSITION);
