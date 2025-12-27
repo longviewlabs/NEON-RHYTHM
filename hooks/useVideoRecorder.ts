@@ -312,27 +312,29 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
                                 // Highlighted number (current beat)
                                 const text = segment.slice(2, -2);
                                 ctx.fillStyle = "#FACC15";
-                                // Use fully opaque black stroke for clean contrast
-                                const originalStroke = ctx.strokeStyle;
-                                const originalLineWidth = ctx.lineWidth;
-                                ctx.strokeStyle = "rgba(0,0,0,1.0)";  // 100% opaque black
-                                ctx.lineWidth = 3;  // Slightly thinner
-                                ctx.strokeText(text, currentX + ctx.measureText(text).width / 2, y);
+                                // Temporarily removed stroke
+                                // const originalStroke = ctx.strokeStyle;
+                                // const originalLineWidth = ctx.lineWidth;
+                                // ctx.strokeStyle = "rgba(0,0,0,1.0)";
+                                // ctx.lineWidth = 3;
+                                // ctx.strokeText(text, currentX + ctx.measureText(text).width / 2, y);
                                 ctx.fillText(text, currentX + ctx.measureText(text).width / 2, y);
-                                ctx.strokeStyle = originalStroke;
-                                ctx.lineWidth = originalLineWidth;
+                                // ctx.strokeStyle = originalStroke;
+                                // ctx.lineWidth = originalLineWidth;
                                 currentX += ctx.measureText(text).width;
                             } else {
                                 // Normal text (numbers and dashes)
                                 ctx.fillStyle = "white";
-                                ctx.strokeText(segment, currentX + ctx.measureText(segment).width / 2, y);
+                                // Temporarily removed stroke
+                                // ctx.strokeText(segment, currentX + ctx.measureText(segment).width / 2, y);
                                 ctx.fillText(segment, currentX + ctx.measureText(segment).width / 2, y);
                                 currentX += ctx.measureText(segment).width;
                             }
                         });
                     } else {
                         ctx.fillStyle = "white";
-                        ctx.strokeText(line, x, y);
+                        // Temporarily removed stroke
+                        // ctx.strokeText(line, x, y);
                         ctx.fillText(line, x, y);
                     }
                     });
