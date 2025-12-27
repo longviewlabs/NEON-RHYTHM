@@ -84,7 +84,6 @@ const App: React.FC = () => {
   const rafIdRef = useRef<number | null>(null);
   const gameIdRef = useRef(0);
   const sessionIdRef = useRef(0);
-  const stopRecordingTimeoutRef = useRef<number | null>(null);
 
   // Tracking
   const [status, setStatus] = useState<GameStatus>(GameStatus.LOADING);
@@ -232,35 +231,17 @@ const App: React.FC = () => {
       (status === GameStatus.LOADING && isRecording);
     
     const shouldStopWithDelay =
-      (status === GameStatus.RESULT && isGameOver && isRecording);
+      (status === GameStatus.RESULT && isGameOver);
 
-    if (shouldStopImmediately) {
-      // Clear any pending timeout
-      if (stopRecordingTimeoutRef.current !== null) {
-        clearTimeout(stopRecordingTimeoutRef.current);
-        stopRecordingTimeoutRef.current = null;
-      }
+    if (shouldStopImmediately && isRecording) {
       stopRecording();
-    } else if (shouldStopWithDelay) {
-      // Clear any existing timeout first
-      if (stopRecordingTimeoutRef.current !== null) {
-        clearTimeout(stopRecordingTimeoutRef.current);
-      }
-      
+    } else if (shouldStopWithDelay && isRecording) {
       // Delay 5 seconds to capture user's fail reaction
       const timeoutId = setTimeout(() => {
         stopRecording();
-        stopRecordingTimeoutRef.current = null;
       }, 5000);
       
-      stopRecordingTimeoutRef.current = timeoutId as any;
-      
-      return () => {
-        clearTimeout(timeoutId);
-        if (stopRecordingTimeoutRef.current === timeoutId as any) {
-          stopRecordingTimeoutRef.current = null;
-        }
-      };
+      return () => clearTimeout(timeoutId);
     }
   }, [
     status,
@@ -837,17 +818,6 @@ const App: React.FC = () => {
     sessionIdRef.current = currentSessionId;
 
     cleanupTempData(); // Clear memory/timers from previous rounds
-
-    // Stop any existing recording before starting a new session
-    // This ensures we don't have overlapping recordings
-    if (isRecording) {
-      // Clear the delayed stop timeout if it exists
-      if (stopRecordingTimeoutRef.current !== null) {
-        clearTimeout(stopRecordingTimeoutRef.current);
-        stopRecordingTimeoutRef.current = null;
-      }
-      await stopRecording();
-    }
 
     // Clear fail overlay at the start of each game/round
     setFailOverlay({ show: false, round: currentRoundRef.current });
