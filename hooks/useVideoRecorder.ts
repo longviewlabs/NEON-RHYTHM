@@ -312,8 +312,15 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
                                 // Highlighted number (current beat)
                                 const text = segment.slice(2, -2);
                                 ctx.fillStyle = "#FACC15";
+                                // Use fully opaque black stroke for clean contrast
+                                const originalStroke = ctx.strokeStyle;
+                                const originalLineWidth = ctx.lineWidth;
+                                ctx.strokeStyle = "rgba(0,0,0,1.0)";  // 100% opaque black
+                                ctx.lineWidth = 3;  // Slightly thinner
                                 ctx.strokeText(text, currentX + ctx.measureText(text).width / 2, y);
                                 ctx.fillText(text, currentX + ctx.measureText(text).width / 2, y);
+                                ctx.strokeStyle = originalStroke;
+                                ctx.lineWidth = originalLineWidth;
                                 currentX += ctx.measureText(text).width;
                             } else {
                                 // Normal text (numbers and dashes)
