@@ -1695,7 +1695,19 @@ const App: React.FC = () => {
                       {isFinished && !isPerfect && (
                         <div className="flex flex-col items-center gap-4 w-full">
                           <button
-                            onClick={() => {
+                            onClick={async () => {
+                              // Stop any pending recording timeout
+                              if (stopRecordingTimeoutRef.current !== null) {
+                                clearTimeout(stopRecordingTimeoutRef.current);
+                                stopRecordingTimeoutRef.current = null;
+                              }
+                              
+                              // If still recording, stop it now and wait for completion
+                              if (isRecording) {
+                                await stopRecording();
+                              }
+                              
+                              // Now start fresh game with new recording
                               if (isInfiniteMode) {
                                 // Replay the round they just lost on at current BPM
                                 startGame(
@@ -1777,7 +1789,20 @@ const App: React.FC = () => {
                             </button>
                           )}
                           <button
-                            onClick={() => startGame()}
+                            onClick={async () => {
+                              // Stop any pending recording timeout
+                              if (stopRecordingTimeoutRef.current !== null) {
+                                clearTimeout(stopRecordingTimeoutRef.current);
+                                stopRecordingTimeoutRef.current = null;
+                              }
+                              
+                              // If still recording, stop it now and wait for completion
+                              if (isRecording) {
+                                await stopRecording();
+                              }
+                              
+                              startGame();
+                            }}
                             className="text-white text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] opacity-60 hover:opacity-100 transition-opacity underline underline-offset-8"
                           >
                             Replay Level
