@@ -233,14 +233,10 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
                 if (!isMobile) {
                     ctx.shadowColor = "black";
                     ctx.shadowBlur = 8;
-                    ctx.lineWidth = 6;
-                    ctx.strokeStyle = "rgba(0,0,0,0.7)";
-                } else {
-                    // Much lighter stroke for mobile
-                    ctx.lineWidth = 2;
-                    ctx.strokeStyle = "rgba(0,0,0,0.3)";
                 }
                 ctx.fillStyle = "white";
+                ctx.strokeStyle = "rgba(0,0,0,0.7)";
+                ctx.lineWidth = 4;
 
                 const roundFontSize = isMobile ? 18 : 24;
                 const seqFontSize = roundFontSize; // Same as round text
