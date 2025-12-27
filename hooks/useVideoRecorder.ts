@@ -26,6 +26,7 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
     const failInfoRef = useRef<FailOverlayInfo>({ show: false, round: 1 });
     const currentRoundRef = useRef<number>(currentRound || 1);
     const currentBpmRef = useRef<number>(currentBpm || 95);
+    const stopTimeoutRef = useRef<number | null>(null);
 
     // Update refs when props change
     useEffect(() => {
@@ -62,6 +63,12 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
     }, []);
 
     const startRecording = useCallback(() => {
+        // Clear any pending stop timeout from previous session
+        if (stopTimeoutRef.current !== null) {
+            clearTimeout(stopTimeoutRef.current);
+            stopTimeoutRef.current = null;
+        }
+
         // If already recording, don't start a new session (prevents reset of chunksRef)
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
             console.log("Already recording, skipping start.");
@@ -380,9 +387,26 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
     }, [videoRef, audioStream]);
 
     const stopRecording = useCallback(() => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-            mediaRecorderRef.current.stop();
+        // Clear any pending stop timeout
+        if (stopTimeoutRef.current !== null) {
+            clearTimeout(stopTimeoutRef.current);
+            stopTimeoutRef.current = null;
         }
+
+        return new Promise<void>((resolve) => {
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+                // Wait for the stop event to complete before resolving
+                const recorder = mediaRecorderRef.current;
+                const handleStop = () => {
+                    recorder.removeEventListener('stop', handleStop);
+                    resolve();
+                };
+                recorder.addEventListener('stop', handleStop);
+                recorder.stop();
+            } else {
+                resolve();
+            }
+        });
     }, []);
 
     return {
