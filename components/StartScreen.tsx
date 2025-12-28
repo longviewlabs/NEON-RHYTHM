@@ -5,14 +5,17 @@ interface StartScreenProps {
   isAssetsReady: boolean;
 }
 
-const StartScreen: React.FC<StartScreenProps> = ({ onStart, isAssetsReady }) => {
+const StartScreen: React.FC<StartScreenProps> = ({
+  onStart,
+  isAssetsReady,
+}) => {
   const [isTransitioning, setIsTransitioning] = useState(false);
 
   const handleStart = () => {
     if (!isAssetsReady) return;
 
     setIsTransitioning(true);
-    // The transition takes about 500ms in the template, 
+    // The transition takes about 500ms in the template,
     // but the actual "Initiate" log happens after 150ms.
     setTimeout(() => {
       onStart();
@@ -20,10 +23,18 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart, isAssetsReady }) => 
   };
 
   return (
-    <div className={`container-viral ${isTransitioning ? 'opacity-0 scale-50 rotate-[10deg] duration-500 ease-in-out' : 'animate-pop'}`}
+    <div
+      className={`container-viral ${
+        isTransitioning
+          ? "opacity-0 scale-50 rotate-[10deg] duration-500 ease-in-out"
+          : "animate-pop"
+      }`}
       style={{
-        transition: isTransitioning ? 'opacity 0.5s ease, transform 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55)' : 'none'
-      }}>
+        transition: isTransitioning
+          ? "opacity 0.5s ease, transform 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55)"
+          : "none",
+      }}
+    >
       <div className="title-wrapper-viral">
         <h1 className="title-viral">
           <div className="text-content">
@@ -31,9 +42,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart, isAssetsReady }) => 
             <span className="bottom">RHYTHM</span>
           </div>
         </h1>
-        <div className="subtitle-viral">
-          ONLY 1% CAN PASS 💀
-        </div>
+        <div className="subtitle-viral">ONLY 1% CAN PASS 💀</div>
       </div>
 
       <button
@@ -45,12 +54,9 @@ const StartScreen: React.FC<StartScreenProps> = ({ onStart, isAssetsReady }) => 
         <span className="emoji">🔥</span>
       </button>
 
-      <div className="footer-hint-viral">
-        GET YOUR FINGERS READY 👋
-      </div>
+      <div className="footer-hint-viral">GET YOUR FINGERS READY 👋</div>
     </div>
   );
 };
 
-export default StartScreen;
-
+export default React.memo(StartScreen);

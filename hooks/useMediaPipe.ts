@@ -12,7 +12,9 @@ import {
 } from "@mediapipe/tasks-vision";
 
 // Detect mobile once outside the hook
-const IS_MOBILE = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+const IS_MOBILE =
+  typeof navigator !== "undefined" &&
+  /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
 // Helper: Calculate Squared 3D distance (avoids expensive Math.sqrt)
 export const getDistanceSq3D = (
@@ -127,13 +129,13 @@ export const useMediaPipe = (
   onCountUpdate?: (count: number) => void
 ) => {
   const [isCameraReady, setIsCameraReady] = useState(false);
-  const [fingerCount, setFingerCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const landmarkerRef = useRef<HandLandmarker | null>(null);
   const requestRef = useRef<number>(0);
   const landmarksRef = useRef<NormalizedLandmark[] | null>(null);
   const lastDetectionTimeRef = useRef<number>(0);
+  const lastCountRef = useRef<number>(0);
 
   // Throttling: 30 FPS (33ms) is plenty for rhythm tracking and saves massive CPU/battery
   const DETECTION_INTERVAL = 33;
@@ -226,7 +228,12 @@ export const useMediaPipe = (
     };
 
     const predictWebcam = () => {
-      if (!videoRef.current || !landmarkerRef.current || !isActive || !isTabVisible) {
+      if (
+        !videoRef.current ||
+        !landmarkerRef.current ||
+        !isActive ||
+        !isTabVisible
+      ) {
         requestRef.current = requestAnimationFrame(predictWebcam);
         return;
       }
@@ -266,23 +273,23 @@ export const useMediaPipe = (
                 ? getMode(fingerHistoryRef.current)
                 : count;
 
-            // PERFORMANCE: Only update state if count actually changed
-            if (fingerCount !== smoothedCount) {
-              setFingerCount(smoothedCount);
+            // PERFORMANCE: Only update via callback if count actually changed
+            // Removed state update to prevent high-frequency re-renders
+            if (lastCountRef.current !== smoothedCount) {
+              lastCountRef.current = smoothedCount;
               if (onCountUpdate) onCountUpdate(smoothedCount);
             }
           } else {
             landmarksRef.current = null;
             // Add 0 to history even when no hand detected for temporal smoothing
-            // This prevents flicker-induced "1" counts from ruining a stable "0"
             fingerHistoryRef.current.push(0);
             if (fingerHistoryRef.current.length > HISTORY_SIZE) {
               fingerHistoryRef.current.shift();
             }
 
             const smoothedCount = getMode(fingerHistoryRef.current);
-            if (fingerCount !== smoothedCount) {
-              setFingerCount(smoothedCount);
+            if (lastCountRef.current !== smoothedCount) {
+              lastCountRef.current = smoothedCount;
               if (onCountUpdate) onCountUpdate(smoothedCount);
             }
           }
@@ -307,5 +314,5 @@ export const useMediaPipe = (
     };
   }, [videoRef]);
 
-  return { isCameraReady, fingerCount, error, landmarksRef };
+  return { isCameraReady, error, landmarksRef };
 };

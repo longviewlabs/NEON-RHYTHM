@@ -6,11 +6,12 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
 import { useMediaPipe } from "./hooks/useMediaPipe";
 import Robot from "./components/Robot";
-import WebcamPreview from "./components/WebcamPreview";
-
-import SequenceDisplay from "./components/SequenceDisplay";
+import BackgroundManager from "./components/BackgroundManager";
+import PlayingView from "./components/PlayingView";
 import SettingsModal from "./components/SettingsModal";
 import StartScreen from "./components/StartScreen";
+import MenuView from "./components/MenuView";
+import ResultView from "./components/ResultView";
 import { useVideoRecorder } from "./hooks/useVideoRecorder";
 import { GoogleGenAI } from "@google/genai";
 import {
@@ -1344,43 +1345,20 @@ const App: React.FC = () => {
 
   return (
     <div className="relative w-full h-screen bg-[#050510] overflow-hidden text-white font-sans selection:bg-[#ff00ff]">
-      {/* Hidden Canvas for capture */}
-      <canvas ref={canvasRef} className="hidden" />
-
-      {/* FAIL FLASH OVERLAY */}
-      {showFlash && <div className="fail-flash-overlay" />}
-
-      {/* Background Video */}
-      <video
-        ref={videoRef}
-        className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
-        style={{
-          opacity: videoOpacity,
-        }}
-        playsInline
-        muted
-        autoPlay
-      />
-
-      {/* SKELETON OVERLAY */}
-      <WebcamPreview
+      {/* Background & Overlays extracted for performance */}
+      <BackgroundManager
+        canvasRef={canvasRef}
         videoRef={videoRef}
         landmarksRef={landmarksRef}
         isCameraReady={isCameraReady}
-        showFingerVector={
-          status === GameStatus.LOADING || status === GameStatus.MENU
-        }
+        videoOpacity={videoOpacity}
+        showFlash={showFlash}
+        status={status}
       />
-
-      {/* 9:16 SAFE ZONE FOR DESKTOP */}
-      <SafeZone />
-
-      {/* Minimal Overlay Shadow (Top only for visibility) */}
-      <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-black/40 to-transparent pointer-events-none z-10" />
 
       {/* Main Content Container */}
       <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-3 md:p-4">
-        {/* --- LOADING STATE (Viral Challenge Entry Screen) --- */}
+        {/* --- LOADING STATE --- */}
         {status === GameStatus.LOADING && (
           <StartScreen
             onStart={handleStartGame}
@@ -1390,386 +1368,99 @@ const App: React.FC = () => {
 
         {/* --- MENU STATE --- */}
         {status === GameStatus.MENU && (
-          <div className="flex flex-col items-center gap-4 md:gap-8 animate-pop w-full max-w-sm md:max-w-none">
-            {!isCameraReady ? (
-              <div className="text-yellow-400 animate-pulse text-xs md:text-sm">
-                Initializing Camera...
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-6">
-                <div className="flex flex-col items-center text-center">
-                  {/* <h2 className="text-xl md:text-2xl font-black text-white/60 tracking-widest uppercase mb-1">
-                    Mode
-                  </h2>  */}
-                  {/* <div className="text-3xl md:text-4xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
-                    FINGER RHYTHM
-                  </div> */}
-                </div>
-
-                <button
-                  onClick={() => {
-                    setCurrentBpm(95);
-                    setCurrentLength(8);
-                    setCurrentRound(1);
-                    startGame(undefined, 95, 8);
-                  }}
-                  className="group relative px-12 py-5 rounded-full bg-white text-black font-black text-2xl tracking-widest active:scale-95 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
-                >
-                  START INFINITE
-                </button>
-              </div>
-            )}
-          </div>
+          <MenuView
+            isCameraReady={isCameraReady}
+            onStartInfinite={() => {
+              setCurrentBpm(95);
+              setCurrentLength(8);
+              setCurrentRound(1);
+              startGame(undefined, 95, 8);
+            }}
+          />
         )}
 
         {/* --- PLAYING / ANALYZING / TRANSITION STATE --- */}
-        {(status === GameStatus.PLAYING ||
-          status === GameStatus.ANALYZING ||
-          status === GameStatus.TRANSITION) && (
-          <div className="w-full h-full flex flex-col justify-between py-6 md:py-12">
-            {/* Top Center Round Info - Hidden during Transition as we show a bigger one */}
-            {status !== GameStatus.TRANSITION && (
-              <div className="absolute top-10 left-0 right-0 z-50 flex flex-col items-center pointer-events-none scale-110 md:scale-125 overflow-hidden">
-                <div className="relative h-24 md:h-32 w-full flex items-center justify-center">
-                  {exitingRound !== null && (
-                    <div
-                      key={`exit-${exitingRound}`}
-                      className="absolute text-6xl md:text-8xl font-black text-white/50 drop-shadow-[0_0_30px_rgba(255,255,255,0.2)] uppercase italic tracking-tighter animate-round-slide-out leading-none"
-                    >
-                      ROUND {exitingRound}
-                    </div>
-                  )}
-                  <div
-                    key={`enter-${displayRound}`}
-                    className="absolute text-6xl md:text-8xl font-black text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.4)] uppercase italic tracking-tighter animate-round-slide-in leading-none"
-                  >
-                    ROUND {displayRound}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 mt-3 px-4 py-1.5 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 shadow-2xl">
-                  <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.8)]" />
-                  <span className="text-[10px] md:text-xs font-black text-white/90 uppercase tracking-[0.25em]">
-                    {currentBpm} BPM
-                  </span>
-                </div>
-              </div>
-            )}
+        <PlayingView
+          status={status}
+          currentRound={currentRound}
+          currentBpm={currentBpm}
+          displayRound={displayRound}
+          exitingRound={exitingRound}
+          countdown={countdown}
+          sequence={sequence}
+          currentBeat={currentBeat}
+          localResults={localResults}
+        />
 
-            {/* TRANSITION OVERLAY - Big Round & BPM */}
-            {/* TRANSITION OVERLAY - Big Round & BPM */}
-            {status === GameStatus.TRANSITION && (
-              <div className="absolute inset-0 z-[60] flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in-fast">
-                <div className="flex flex-col items-center gap-2">
-                  <div
-                    className="text-4xl md:text-6xl font-black text-white/80 uppercase tracking-widest animate-slide-in-top opacity-0"
-                    style={{
-                      animationDelay: "0.1s",
-                      animationFillMode: "forwards",
-                    }}
-                  >
-                    NEXT UP
-                  </div>
-                  <div
-                    className="text-6xl md:text-9xl font-black text-white drop-shadow-[0_0_50px_rgba(255,255,255,0.6)] italic tracking-tighter leading-none animate-zoom-in-pop opacity-0 px-3 whitespace-nowrap"
-                    style={{
-                      animationDelay: "0.3s",
-                      animationFillMode: "forwards",
-                    }}
-                  >
-                    ROUND {currentRound}
-                  </div>
-                  <div className="relative mt-4">
-                    <div className="absolute -inset-4 bg-red-500/20 blur-xl rounded-full animate-pulse"></div>
-                    <div
-                      className="relative text-6xl md:text-8xl font-black text-red-500 drop-shadow-[0_0_20px_rgba(239,68,68,1)] tracking-widest animate-slide-in-bottom opacity-0"
-                      style={{
-                        animationDelay: "0.5s",
-                        animationFillMode: "forwards",
-                      }}
-                    >
-                      {currentBpm} BPM
-                    </div>
-                  </div>
-                  <div
-                    className="mt-8 text-xl text-white/60 font-bold tracking-[0.5em] animate-bounce animate-fade-in-delayed opacity-0"
-                    style={{
-                      animationDelay: "0.7s",
-                      animationFillMode: "forwards",
-                    }}
-                  >
-                    SPEED INCREASING...
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Top Center Countdown */}
-            {countdown !== null && (
-              <div className="absolute top-[25%] left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-                <div
-                  key={countdown}
-                  className="text-9xl md:text-[12rem] font-black text-white drop-shadow-[0_10px_30px_rgba(0,0,0,0.8)] animate-countdown-dramatic"
-                >
-                  {countdown}
-                </div>
-              </div>
-            )}
-
-            {/* Center Stage - Glass Bar Below */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-full z-40 pointer-events-none">
-              {/* Active Sequence */}
-              {(status === GameStatus.PLAYING ||
-                status === GameStatus.TRANSITION) && (
-                <div className="flex flex-col items-center w-full">
-                  {/* MAIN SEQUENCE */}
-                  <SequenceDisplay
-                    sequence={sequence}
-                    currentBeat={currentBeat}
-                    countdown={countdown}
-                  />
-                </div>
-              )}
-
-              {/* Robot Analysis */}
-              {status === GameStatus.ANALYZING &&
-                !localResults.some((r) => r === false) && (
-                  <div className="flex flex-col items-center gap-4 md:gap-6 animate-pop px-4">
-                    <h2 className="text-2xl md:text-4xl font-black uppercase text-glow animate-pulse">
-                      ANALYZING...
-                    </h2>
-                    <p className="text-white/60 text-xs md:text-sm text-center">
-                      The AI Judge is watching your moves
-                    </p>
-                  </div>
-                )}
-            </div>
-          </div>
-        )}
-
+        {/* --- RESULT STATE --- */}
         {status === GameStatus.RESULT && (
           <div
             className="flex flex-col items-center justify-center gap-2 md:gap-6 w-full max-w-4xl animate-pop px-3 md:px-4 h-full relative"
-            style={{
-              paddingBottom: 20,
-            }}
+            style={{ paddingBottom: 20 }}
           >
-            {(() => {
-              const currentCorrect = revealedResults.filter(
-                (r) => r === true
-              ).length;
-              const isFinished =
-                (revealedResults.length > 0 &&
-                  revealedResults.every((r) => r != null)) ||
-                (isInfiniteMode && revealedResults.some((r) => r === false));
-              const isPerfect =
-                isFinished && currentCorrect === sequence.length;
-              const hideForInfiniteFail = isInfiniteMode && !isPerfect;
-
-              if (!isFinished && !hideForInfiniteFail) {
-                return (
-                  <div className="flex flex-col items-center gap-4 md:gap-6 animate-pop px-4">
-                    <h2 className="text-2xl md:text-4xl font-black uppercase text-glow animate-pulse">
-                      ANALYZING...
-                    </h2>
-                  </div>
-                );
-              }
-
-              return (
-                <div className="flex flex-col items-center relative gap-2 md:gap-4">
-                  {/* BIG ANIMATED FAIL TITLE AND SUBTITLE */}
-                  {hideForInfiniteFail && (
-                    <div className="z-[100] pointer-events-none mb-10 md:mb-20 animate-fail-stamp flex flex-col items-start translate-x-[-2%]">
-                      <div className="text-[7rem] md:text-[16rem] font-black text-red-600 drop-shadow-[0_0_50px_rgba(220,38,38,0.8)] uppercase italic tracking-tighter select-none leading-none">
-                        FAIL
-                      </div>
-                      <div className="text-[1.3rem] md:text-[2.8rem] font-black text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)] uppercase italic tracking-tighter select-none leading-none mt-[-8px] md:mt-[-20px] pl-1 md:pl-3 whitespace-nowrap">
-                        Made it to Round {currentRound}
-                      </div>
-                    </div>
-                  )}
-
-                  <div
-                    className="flex flex-col items-center animate-slide-up-pop w-full"
-                    style={{
-                      animationDelay: "0s",
-                      opacity: 0,
-                      animationFillMode: "forwards",
-                    }}
-                  >
-                    {!isInfiniteMode && <Robot state={robotState} />}
-                    {/* Redundant Game Over Panel Removed */}
-
-                    <div className="flex flex-col items-center gap-3 md:gap-5 mt-4 md:mt-16 w-full max-w-sm">
-                      {isFinished && !isPerfect && (
-                        <div className="flex flex-col items-center gap-4 w-full">
-                          <button
-                            onClick={async () => {
-                              // Stop any pending recording timeout
-                              if (stopRecordingTimeoutRef.current !== null) {
-                                clearTimeout(stopRecordingTimeoutRef.current);
-                                stopRecordingTimeoutRef.current = null;
-                              }
-
-                              // If still recording, stop it now and wait for completion
-                              if (isRecording) {
-                                await stopRecording();
-                              }
-
-                              // Now start fresh game with new recording
-                              if (isInfiniteMode) {
-                                // Replay the round they just lost on at current BPM
-                                startGame(
-                                  undefined,
-                                  infiniteBpmRef.current,
-                                  infiniteLengthRef.current
-                                );
-                              } else {
-                                startGame();
-                              }
-                            }}
-                            className="px-12 py-5 bg-red-600 text-white font-black uppercase tracking-widest text-xl hover:bg-red-700 active:scale-95 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-2xl w-full min-w-[280px]"
-                          >
-                            {isInfiniteMode
-                              ? `REPLAY ROUND ${currentRound}`
-                              : "TRY AGAIN"}
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              setDifficulty("EASY");
-                              setIsInfiniteMode(true);
-                              setCurrentRound(1);
-                              currentRoundRef.current = 1;
-                              setCurrentBpm(100);
-                              setCurrentLength(8);
-                              setStatus(GameStatus.LOADING);
-                            }}
-                            className="text-white/60 text-xs font-bold uppercase tracking-[0.2em] hover:text-white transition-colors mt-2"
-                          >
-                            Back to Menu
-                          </button>
-                        </div>
-                      )}
-
-                      {isFinished && isPerfect && (
-                        <div className="flex flex-col items-center gap-4 w-full">
-                          {isInfiniteMode ? (
-                            <button
-                              onClick={() => {
-                                currentRoundRef.current += 1;
-                                const nextRoundNum = currentRoundRef.current;
-                                const nextBpm = 100 + (nextRoundNum - 1) * 5;
-                                const nextLength = 8 + (nextRoundNum - 1) * 3;
-
-                                infiniteBpmRef.current = nextBpm;
-                                infiniteLengthRef.current = nextLength;
-                                setCurrentBpm(Math.round(nextBpm));
-                                setCurrentLength(nextLength);
-                                setCurrentRound(nextRoundNum);
-                                startGame(undefined, nextBpm, nextLength);
-                              }}
-                              className="px-12 py-5 bg-green-600 text-white font-black uppercase tracking-widest text-xl hover:bg-green-700 hover:scale-105 active:scale-95 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-2xl w-full min-w-[280px]"
-                            >
-                              NEXT ROUND
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                const diffs = Object.keys(
-                                  DIFFICULTIES
-                                ) as Difficulty[];
-                                const currentIndex = diffs.indexOf(difficulty);
-                                const nextDifficulty = diffs[currentIndex + 1];
-
-                                if (nextDifficulty) {
-                                  setDifficulty(nextDifficulty);
-                                  startGame(nextDifficulty);
-                                } else {
-                                  setDifficulty("EASY");
-                                  setStatus(GameStatus.LOADING);
-                                }
-                              }}
-                              className="px-12 py-5 bg-green-600 text-white font-black uppercase tracking-widest text-xl hover:bg-green-700 hover:scale-105 active:scale-95 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-2xl w-full min-w-[280px]"
-                            >
-                              {difficulty === "NIGHTMARE"
-                                ? "FINISH"
-                                : "NEXT ROUND"}
-                            </button>
-                          )}
-                          <button
-                            onClick={async () => {
-                              // Stop any pending recording timeout
-                              if (stopRecordingTimeoutRef.current !== null) {
-                                clearTimeout(stopRecordingTimeoutRef.current);
-                                stopRecordingTimeoutRef.current = null;
-                              }
-
-                              // If still recording, stop it now and wait for completion
-                              if (isRecording) {
-                                await stopRecording();
-                              }
-
-                              startGame();
-                            }}
-                            className="text-white text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] opacity-60 hover:opacity-100 transition-opacity underline underline-offset-8"
-                          >
-                            Replay Level
-                          </button>
-                        </div>
-                      )}
-
-                      {/* NEW SHARING SECTION */}
-                      <div
-                        className="flex flex-col items-center gap-4 mt-8 w-full animate-slide-up-pop"
-                        style={{
-                          animationDelay: hideForInfiniteFail ? "0.8s" : "0s",
-                          opacity: 0,
-                          animationFillMode: "forwards",
-                        }}
-                      >
-                        {/* Primary Share CTA */}
-                        <div className="flex flex-col items-center gap-2 w-full">
-                          <button
-                            disabled={isRecording || !videoBlob}
-                            onClick={() => handleShare("system")}
-                            className={`group relative px-12 py-5 rounded-2xl font-black text-xl tracking-widest transition-all shadow-[0_8px_20px_rgba(0,0,0,0.4)] w-full min-w-[280px] flex items-center justify-center gap-3 overflow-hidden ${
-                              isRecording || !videoBlob
-                                ? "bg-white/10 text-white/30 cursor-not-allowed"
-                                : "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white hover:scale-[1.02] active:scale-95"
-                            }`}
-                          >
-                            <span className="relative z-10">
-                              {isRecording || !videoBlob
-                                ? "PREPARING VIDEO..."
-                                : "SHARE THIS VIDEO"}
-                            </span>
-                            {!isRecording && videoBlob && (
-                              <span className="text-2xl">🔥</span>
-                            )}
-                            <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out pointer-events-none" />
-                          </button>
-                          {status === GameStatus.RESULT && isRecording && (
-                            <p className="text-white/40 text-[10px] uppercase font-bold tracking-widest animate-pulse">
-                              Processing High-Quality Export...
-                            </p>
-                          )}
-                          {/* Secondary Save CTA */}
-                          <button
-                            disabled={isRecording || !videoBlob}
-                            onClick={handleSaveVideo}
-                            className="flex items-center gap-2 px-6 py-3 text-white/70 hover:text-white transition-colors text-sm font-bold uppercase tracking-widest disabled:opacity-0"
-                          >
-                            <Download size={18} />
-                            <span>Save video</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
+            <ResultView
+              revealedResults={revealedResults}
+              sequence={sequence}
+              isInfiniteMode={isInfiniteMode}
+              currentRound={currentRound}
+              robotState={robotState}
+              isRecording={isRecording}
+              videoBlob={videoBlob}
+              isVideoDownloaded={isVideoDownloaded}
+              showSaveToast={showSaveToast}
+              onReplay={async () => {
+                if (stopRecordingTimeoutRef.current !== null) {
+                  clearTimeout(stopRecordingTimeoutRef.current);
+                  stopRecordingTimeoutRef.current = null;
+                }
+                if (isRecording) await stopRecording();
+                if (isInfiniteMode) {
+                  startGame(
+                    undefined,
+                    infiniteBpmRef.current,
+                    infiniteLengthRef.current
+                  );
+                } else {
+                  startGame();
+                }
+              }}
+              onBackToMenu={() => {
+                setDifficulty("EASY");
+                setIsInfiniteMode(true);
+                setCurrentRound(1);
+                currentRoundRef.current = 1;
+                setCurrentBpm(100);
+                setCurrentLength(8);
+                setStatus(GameStatus.LOADING);
+              }}
+              onNextRound={() => {
+                if (isInfiniteMode) {
+                  currentRoundRef.current += 1;
+                  const nextRoundNum = currentRoundRef.current;
+                  const nextBpm = 100 + (nextRoundNum - 1) * 5;
+                  const nextLength = 8 + (nextRoundNum - 1) * 3;
+                  infiniteBpmRef.current = nextBpm;
+                  infiniteLengthRef.current = nextLength;
+                  setCurrentBpm(Math.round(nextBpm));
+                  setCurrentLength(nextLength);
+                  setCurrentRound(nextRoundNum);
+                  startGame(undefined, nextBpm, nextLength);
+                } else {
+                  const diffs = Object.keys(DIFFICULTIES) as Difficulty[];
+                  const currentIndex = diffs.indexOf(difficulty);
+                  const nextDifficulty = diffs[currentIndex + 1];
+                  if (nextDifficulty) {
+                    setDifficulty(nextDifficulty);
+                    startGame(nextDifficulty);
+                  } else {
+                    setDifficulty("EASY");
+                    setStatus(GameStatus.LOADING);
+                  }
+                }
+              }}
+              onShare={handleShare}
+              onSaveVideo={handleSaveVideo}
+            />
           </div>
         )}
 
