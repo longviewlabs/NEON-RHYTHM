@@ -54,8 +54,26 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
   useEffect(() => {
     if (!isCameraReady) return;
     let animationFrameId: number;
+    let lastRenderTime = 0;
 
     const render = () => {
+      if (!showFingerVector) {
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext("2d");
+        if (ctx && canvas) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        return;
+      }
+
+      const now = performance.now();
+      // Throttle to ~30 FPS (33ms) to save CPU
+      if (now - lastRenderTime < 33) {
+        animationFrameId = requestAnimationFrame(render);
+        return;
+      }
+      lastRenderTime = now;
+
       const canvas = canvasRef.current;
       const video = videoRef.current;
 
@@ -95,7 +113,7 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
           }
 
           // --- Draw Landmarks ---
-          if (showFingerVector && landmarksRef.current) {
+          if (landmarksRef.current) {
             const landmarks = landmarksRef.current;
 
             ctx.strokeStyle = "rgba(255, 255, 255, 0.9)"; // Solid White
