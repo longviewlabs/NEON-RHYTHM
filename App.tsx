@@ -36,8 +36,6 @@ import { shareVideo, saveVideo, ShareTarget } from "./utils/shareUtils";
 import { Download } from "lucide-react";
 import SafeZone from "./components/SafeZone";
 
-
-
 // Initialize AI outside component to avoid re-instantiation memory overhead
 let genAIInstance: GoogleGenAI | null = null;
 const getAI = (apiKey: string) => {
@@ -721,7 +719,7 @@ const App: React.FC = () => {
       if (currentSourceRef.current) {
         try {
           currentSourceRef.current.stop();
-        } catch (e) { }
+        } catch (e) {}
         currentSourceRef.current = null;
       }
 
@@ -772,7 +770,7 @@ const App: React.FC = () => {
     if (currentSourceRef.current) {
       try {
         currentSourceRef.current.stop();
-      } catch (e) { }
+      } catch (e) {}
       currentSourceRef.current = null;
     }
     currentGainRef.current = null;
@@ -963,7 +961,9 @@ const App: React.FC = () => {
       if (result.success) {
         console.log(`[Instrument] share_native_success`);
       } else {
-        console.log(`[Instrument] share_native_cancelled_or_failed: ${result.error}`);
+        console.log(
+          `[Instrument] share_native_cancelled_or_failed: ${result.error}`
+        );
       }
     } else {
       console.log(`[Instrument] share_fallback_trigger_modal`);
@@ -1137,7 +1137,7 @@ const App: React.FC = () => {
         while (
           nextJudgementBeat < seq.length &&
           firstBeatTime + nextJudgementBeat * intervalSec + judgeOffsetSec <
-          currentTime
+            currentTime
         ) {
           const beatIdx = nextJudgementBeat;
           // MODIFIED: Use hitBeatsRef latching for much more stable detection.
@@ -1498,125 +1498,125 @@ const App: React.FC = () => {
         {(status === GameStatus.PLAYING ||
           status === GameStatus.ANALYZING ||
           status === GameStatus.TRANSITION) && (
-            <div className="w-full h-full flex flex-col justify-between py-6 md:py-12">
-              {/* Top Center Round Info - Hidden during Transition as we show a bigger one */}
-              {status !== GameStatus.TRANSITION && (
-                <div className="absolute top-10 left-0 right-0 z-50 flex flex-col items-center pointer-events-none scale-110 md:scale-125 overflow-hidden">
-                  <div className="relative h-24 md:h-32 w-full flex items-center justify-center">
-                    {exitingRound !== null && (
-                      <div
-                        key={`exit-${exitingRound}`}
-                        className="absolute text-6xl md:text-8xl font-black text-white/50 drop-shadow-[0_0_30px_rgba(255,255,255,0.2)] uppercase italic tracking-tighter animate-round-slide-out leading-none"
-                      >
-                        ROUND {exitingRound}
-                      </div>
-                    )}
+          <div className="w-full h-full flex flex-col justify-between py-6 md:py-12">
+            {/* Top Center Round Info - Hidden during Transition as we show a bigger one */}
+            {status !== GameStatus.TRANSITION && (
+              <div className="absolute top-10 left-0 right-0 z-50 flex flex-col items-center pointer-events-none scale-110 md:scale-125 overflow-hidden">
+                <div className="relative h-24 md:h-32 w-full flex items-center justify-center">
+                  {exitingRound !== null && (
                     <div
-                      key={`enter-${displayRound}`}
-                      className="absolute text-6xl md:text-8xl font-black text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.4)] uppercase italic tracking-tighter animate-round-slide-in leading-none"
+                      key={`exit-${exitingRound}`}
+                      className="absolute text-6xl md:text-8xl font-black text-white/50 drop-shadow-[0_0_30px_rgba(255,255,255,0.2)] uppercase italic tracking-tighter animate-round-slide-out leading-none"
                     >
-                      ROUND {displayRound}
+                      ROUND {exitingRound}
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3 mt-3 px-4 py-1.5 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 shadow-2xl">
-                    <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.8)]" />
-                    <span className="text-[10px] md:text-xs font-black text-white/90 uppercase tracking-[0.25em]">
-                      {currentBpm} BPM
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* TRANSITION OVERLAY - Big Round & BPM */}
-              {/* TRANSITION OVERLAY - Big Round & BPM */}
-              {status === GameStatus.TRANSITION && (
-                <div className="absolute inset-0 z-[60] flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in-fast">
-                  <div className="flex flex-col items-center gap-2">
-                    <div
-                      className="text-4xl md:text-6xl font-black text-white/80 uppercase tracking-widest animate-slide-in-top opacity-0"
-                      style={{
-                        animationDelay: "0.1s",
-                        animationFillMode: "forwards",
-                      }}
-                    >
-                      NEXT UP
-                    </div>
-                    <div
-                      className="text-6xl md:text-9xl font-black text-white drop-shadow-[0_0_50px_rgba(255,255,255,0.6)] italic tracking-tighter leading-none animate-zoom-in-pop opacity-0 px-3 whitespace-nowrap"
-                      style={{
-                        animationDelay: "0.3s",
-                        animationFillMode: "forwards",
-                      }}
-                    >
-                      ROUND {currentRound}
-                    </div>
-                    <div className="relative mt-4">
-                      <div className="absolute -inset-4 bg-red-500/20 blur-xl rounded-full animate-pulse"></div>
-                      <div
-                        className="relative text-6xl md:text-8xl font-black text-red-500 drop-shadow-[0_0_20px_rgba(239,68,68,1)] tracking-widest animate-slide-in-bottom opacity-0"
-                        style={{
-                          animationDelay: "0.5s",
-                          animationFillMode: "forwards",
-                        }}
-                      >
-                        {currentBpm} BPM
-                      </div>
-                    </div>
-                    <div
-                      className="mt-8 text-xl text-white/60 font-bold tracking-[0.5em] animate-bounce animate-fade-in-delayed opacity-0"
-                      style={{
-                        animationDelay: "0.7s",
-                        animationFillMode: "forwards",
-                      }}
-                    >
-                      SPEED INCREASING...
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Top Center Countdown */}
-              {countdown !== null && (
-                <div className="absolute top-[25%] left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+                  )}
                   <div
-                    key={countdown}
-                    className="text-9xl md:text-[12rem] font-black text-white drop-shadow-[0_10px_30px_rgba(0,0,0,0.8)] animate-countdown-dramatic"
+                    key={`enter-${displayRound}`}
+                    className="absolute text-6xl md:text-8xl font-black text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.4)] uppercase italic tracking-tighter animate-round-slide-in leading-none"
                   >
-                    {countdown}
+                    ROUND {displayRound}
                   </div>
+                </div>
+                <div className="flex items-center gap-3 mt-3 px-4 py-1.5 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 shadow-2xl">
+                  <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.8)]" />
+                  <span className="text-[10px] md:text-xs font-black text-white/90 uppercase tracking-[0.25em]">
+                    {currentBpm} BPM
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* TRANSITION OVERLAY - Big Round & BPM */}
+            {/* TRANSITION OVERLAY - Big Round & BPM */}
+            {status === GameStatus.TRANSITION && (
+              <div className="absolute inset-0 z-[60] flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in-fast">
+                <div className="flex flex-col items-center gap-2">
+                  <div
+                    className="text-4xl md:text-6xl font-black text-white/80 uppercase tracking-widest animate-slide-in-top opacity-0"
+                    style={{
+                      animationDelay: "0.1s",
+                      animationFillMode: "forwards",
+                    }}
+                  >
+                    NEXT UP
+                  </div>
+                  <div
+                    className="text-6xl md:text-9xl font-black text-white drop-shadow-[0_0_50px_rgba(255,255,255,0.6)] italic tracking-tighter leading-none animate-zoom-in-pop opacity-0 px-3 whitespace-nowrap"
+                    style={{
+                      animationDelay: "0.3s",
+                      animationFillMode: "forwards",
+                    }}
+                  >
+                    ROUND {currentRound}
+                  </div>
+                  <div className="relative mt-4">
+                    <div className="absolute -inset-4 bg-red-500/20 blur-xl rounded-full animate-pulse"></div>
+                    <div
+                      className="relative text-6xl md:text-8xl font-black text-red-500 drop-shadow-[0_0_20px_rgba(239,68,68,1)] tracking-widest animate-slide-in-bottom opacity-0"
+                      style={{
+                        animationDelay: "0.5s",
+                        animationFillMode: "forwards",
+                      }}
+                    >
+                      {currentBpm} BPM
+                    </div>
+                  </div>
+                  <div
+                    className="mt-8 text-xl text-white/60 font-bold tracking-[0.5em] animate-bounce animate-fade-in-delayed opacity-0"
+                    style={{
+                      animationDelay: "0.7s",
+                      animationFillMode: "forwards",
+                    }}
+                  >
+                    SPEED INCREASING...
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Top Center Countdown */}
+            {countdown !== null && (
+              <div className="absolute top-[25%] left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+                <div
+                  key={countdown}
+                  className="text-9xl md:text-[12rem] font-black text-white drop-shadow-[0_10px_30px_rgba(0,0,0,0.8)] animate-countdown-dramatic"
+                >
+                  {countdown}
+                </div>
+              </div>
+            )}
+
+            {/* Center Stage - Glass Bar Below */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-full z-40 pointer-events-none">
+              {/* Active Sequence */}
+              {(status === GameStatus.PLAYING ||
+                status === GameStatus.TRANSITION) && (
+                <div className="flex flex-col items-center w-full">
+                  {/* MAIN SEQUENCE */}
+                  <SequenceDisplay
+                    sequence={sequence}
+                    currentBeat={currentBeat}
+                    countdown={countdown}
+                  />
                 </div>
               )}
 
-              {/* Center Stage - Glass Bar Below */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-full z-40 pointer-events-none">
-                {/* Active Sequence */}
-                {(status === GameStatus.PLAYING ||
-                  status === GameStatus.TRANSITION) && (
-                    <div className="flex flex-col items-center w-full">
-                      {/* MAIN SEQUENCE */}
-                      <SequenceDisplay
-                        sequence={sequence}
-                        currentBeat={currentBeat}
-                        countdown={countdown}
-                      />
-                    </div>
-                  )}
-
-                {/* Robot Analysis */}
-                {status === GameStatus.ANALYZING &&
-                  !localResults.some((r) => r === false) && (
-                    <div className="flex flex-col items-center gap-4 md:gap-6 animate-pop px-4">
-                      <h2 className="text-2xl md:text-4xl font-black uppercase text-glow animate-pulse">
-                        ANALYZING...
-                      </h2>
-                      <p className="text-white/60 text-xs md:text-sm text-center">
-                        The AI Judge is watching your moves
-                      </p>
-                    </div>
-                  )}
-              </div>
+              {/* Robot Analysis */}
+              {status === GameStatus.ANALYZING &&
+                !localResults.some((r) => r === false) && (
+                  <div className="flex flex-col items-center gap-4 md:gap-6 animate-pop px-4">
+                    <h2 className="text-2xl md:text-4xl font-black uppercase text-glow animate-pulse">
+                      ANALYZING...
+                    </h2>
+                    <p className="text-white/60 text-xs md:text-sm text-center">
+                      The AI Judge is watching your moves
+                    </p>
+                  </div>
+                )}
             </div>
-          )}
+          </div>
+        )}
 
         {status === GameStatus.RESULT && (
           <div
@@ -1797,7 +1797,7 @@ const App: React.FC = () => {
                         style={{
                           animationDelay: hideForInfiniteFail ? "0.8s" : "0s",
                           opacity: 0,
-                          animationFillMode: "forwards"
+                          animationFillMode: "forwards",
                         }}
                       >
                         {/* Primary Share CTA */}
@@ -1805,10 +1805,11 @@ const App: React.FC = () => {
                           <button
                             disabled={isRecording || !videoBlob}
                             onClick={() => handleShare("system")}
-                            className={`group relative px-12 py-5 rounded-2xl font-black text-xl tracking-widest transition-all shadow-[0_8px_20px_rgba(0,0,0,0.4)] w-full min-w-[280px] flex items-center justify-center gap-3 overflow-hidden ${isRecording || !videoBlob
-                              ? "bg-white/10 text-white/30 cursor-not-allowed"
-                              : "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white hover:scale-[1.02] active:scale-95"
-                              }`}
+                            className={`group relative px-12 py-5 rounded-2xl font-black text-xl tracking-widest transition-all shadow-[0_8px_20px_rgba(0,0,0,0.4)] w-full min-w-[280px] flex items-center justify-center gap-3 overflow-hidden ${
+                              isRecording || !videoBlob
+                                ? "bg-white/10 text-white/30 cursor-not-allowed"
+                                : "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white hover:scale-[1.02] active:scale-95"
+                            }`}
                           >
                             <span className="relative z-10">
                               {isRecording || !videoBlob
@@ -1825,6 +1826,15 @@ const App: React.FC = () => {
                               Processing High-Quality Export...
                             </p>
                           )}
+                          {/* Secondary Save CTA */}
+                          <button
+                            disabled={isRecording || !videoBlob}
+                            onClick={handleSaveVideo}
+                            className="flex items-center gap-2 px-6 py-3 text-white/70 hover:text-white transition-colors text-sm font-bold uppercase tracking-widest disabled:opacity-0"
+                          >
+                            <Download size={18} />
+                            <span>Save video</span>
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -1845,8 +1855,6 @@ const App: React.FC = () => {
           onDownload={handleSaveVideo}
           roundNumber={currentRound}
         />
-
-
       </div>
     </div>
   );
