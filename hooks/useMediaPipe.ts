@@ -134,18 +134,18 @@ export const useMediaPipe = (
   const landmarkerRef = useRef<HandLandmarker | null>(null);
   const requestRef = useRef<number>(0);
   const landmarksRef = useRef<NormalizedLandmark[] | null>(null);
-  const fingerCountRef = useRef<number>(0); // Shared ref for UI to avoid re-calculation
+  const fingerCountRef = useRef<number>(0);
   const lastDetectionTimeRef = useRef<number>(0);
   const lastCountRef = useRef<number>(0);
+  const isProcessingRef = useRef<boolean>(false);
 
-  // Throttling: 30 FPS (33ms) is plenty for rhythm tracking and saves massive CPU/battery
-  const DETECTION_INTERVAL = 33;
+  // Throttling: 15-20 FPS (50-66ms) is optimal for mobile CPU/battery
+  const DETECTION_INTERVAL = 55;
 
   // Temporal smoothing: store recent finger counts
   const fingerHistoryRef = useRef<number[]>([]);
-  const HISTORY_SIZE = IS_MOBILE ? 3 : 5; // Smaller history for faster response on mobile
+  const HISTORY_SIZE = IS_MOBILE ? 3 : 5;
 
-  // Get MODE (most frequent value) from array without allocation (optimized for small arrays)
   const getMode = (arr: number[]): number => {
     if (arr.length === 0) return 0;
     let maxFreq = 0;
@@ -183,13 +183,13 @@ export const useMediaPipe = (
         const landmarker = await HandLandmarker.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-            delegate: "CPU", // CPU is often faster on desktop by avoiding readPixels overhead
+            delegate: "CPU",
           },
           runningMode: "VIDEO",
           numHands: 1,
-          minHandDetectionConfidence: 0.7,
-          minHandPresenceConfidence: 0.7,
-          minTrackingConfidence: 0.7,
+          minHandDetectionConfidence: 0.5, // Sensitive for mobile
+          minHandPresenceConfidence: 0.5,
+          minTrackingConfidence: 0.5,
         });
 
         if (!isActive) {
@@ -198,7 +198,7 @@ export const useMediaPipe = (
         }
 
         landmarkerRef.current = landmarker;
-        startCamera();
+        console.log("MediaPipe Ready (High-Performance CPU)");
       } catch (err: any) {
         console.error("Error initializing MediaPipe:", err);
         setError(`Failed to load hand tracking: ${err.message}`);
@@ -210,7 +210,6 @@ export const useMediaPipe = (
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
-            // 480p is perfect for hand tracking and much faster than 720p/1080p
             width: { ideal: 640 },
             height: { ideal: 480 },
           },
@@ -231,12 +230,13 @@ export const useMediaPipe = (
       }
     };
 
-    const predictWebcam = (time?: number) => {
+    const predictWebcam = async (time?: number) => {
       if (
         !videoRef.current ||
         !landmarkerRef.current ||
         !isActive ||
-        !isTabVisible
+        !isTabVisible ||
+        isProcessingRef.current
       ) {
         scheduleNextFrame();
         return;
@@ -246,18 +246,30 @@ export const useMediaPipe = (
       if (video.videoWidth > 0 && video.videoHeight > 0) {
         const startTimeMs = time || performance.now();
 
-        // Standardized throttling to 30 FPS for all devices
+        // Standardized throttling to ~18 FPS
         if (startTimeMs - lastDetectionTimeRef.current < DETECTION_INTERVAL) {
           scheduleNextFrame();
           return;
         }
         lastDetectionTimeRef.current = startTimeMs;
+        isProcessingRef.current = true;
 
         try {
+          // DOWNSCALING: Create a low-res bitmap to process (320x240)
+          // This reduces the pixels the AI processes by 75%, making it MUCH faster on mobile
+          const bitmap = await createImageBitmap(video, {
+            resizeWidth: 320,
+            resizeHeight: 240,
+            resizeQuality: "low",
+          });
+
+          // Detect using the downscaled bitmap
           const results = landmarkerRef.current.detectForVideo(
-            video,
-            startTimeMs
+            bitmap,
+            Math.round(video.currentTime * 1000)
           );
+
+          bitmap.close(); // Clean up memory immediately
 
           let currentCount = 0;
           if (results.landmarks && results.landmarks.length > 0) {
@@ -265,31 +277,31 @@ export const useMediaPipe = (
             const lm = results.landmarks[0];
             landmarksRef.current = lm;
             currentCount = countFingers(lm, ratio);
+            console.log("Hand detected! Finger count:", currentCount);
           } else {
             landmarksRef.current = null;
           }
 
-          // Add to history buffer for temporal smoothing
           fingerHistoryRef.current.push(currentCount);
           if (fingerHistoryRef.current.length > HISTORY_SIZE) {
             fingerHistoryRef.current.shift();
           }
 
-          // Use MODE (most frequent value) for stability
           const smoothedCount =
-            fingerHistoryRef.current.length >= 3
+            fingerHistoryRef.current.length >= 2
               ? getMode(fingerHistoryRef.current)
               : currentCount;
 
           fingerCountRef.current = smoothedCount;
 
-          // PERFORMANCE: Only update via callback if count actually changed
           if (lastCountRef.current !== smoothedCount) {
             lastCountRef.current = smoothedCount;
             if (onCountUpdate) onCountUpdate(smoothedCount);
           }
         } catch (e) {
-          console.warn("Detection failed this frame", e);
+          console.warn("Detection stalled", e);
+        } finally {
+          isProcessingRef.current = false;
         }
       }
       scheduleNextFrame();
@@ -297,9 +309,7 @@ export const useMediaPipe = (
 
     const scheduleNextFrame = () => {
       if (!isActive) return;
-
       const video = videoRef.current;
-      // Use requestVideoFrameCallback if available for better sync with camera frames
       if (video && (video as any).requestVideoFrameCallback) {
         (video as any).requestVideoFrameCallback(predictWebcam);
       } else {
@@ -312,6 +322,7 @@ export const useMediaPipe = (
     };
 
     setupMediaPipe();
+    startCamera();
 
     return () => {
       isActive = false;
