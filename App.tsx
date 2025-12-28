@@ -84,7 +84,6 @@ const App: React.FC = () => {
   const statusRef = useRef<GameStatus>(GameStatus.LOADING);
   const currentBeatRef = useRef(-1);
   const sequenceRef = useRef<number[]>([]);
-  const fingerCountRef = useRef(0);
 
   // Sync refs with state
   useEffect(() => {
@@ -109,7 +108,7 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const { isCameraReady, landmarksRef } = useMediaPipe(
+  const { isCameraReady, landmarksRef, fingerCountRef } = useMediaPipe(
     videoRef,
     handleFingerCountUpdate
   );
@@ -1350,6 +1349,7 @@ const App: React.FC = () => {
         canvasRef={canvasRef}
         videoRef={videoRef}
         landmarksRef={landmarksRef}
+        fingerCountRef={fingerCountRef}
         isCameraReady={isCameraReady}
         videoOpacity={videoOpacity}
         showFlash={showFlash}

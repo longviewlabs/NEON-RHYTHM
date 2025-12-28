@@ -134,6 +134,7 @@ export const useMediaPipe = (
   const landmarkerRef = useRef<HandLandmarker | null>(null);
   const requestRef = useRef<number>(0);
   const landmarksRef = useRef<NormalizedLandmark[] | null>(null);
+  const fingerCountRef = useRef<number>(0); // Shared ref for UI to avoid re-calculation
   const lastDetectionTimeRef = useRef<number>(0);
   const lastCountRef = useRef<number>(0);
 
@@ -144,16 +145,19 @@ export const useMediaPipe = (
   const fingerHistoryRef = useRef<number[]>([]);
   const HISTORY_SIZE = IS_MOBILE ? 3 : 5; // Smaller history for faster response on mobile
 
-  // Get MODE (most frequent value) from array
+  // Get MODE (most frequent value) from array without allocation (optimized for small arrays)
   const getMode = (arr: number[]): number => {
-    const freq: Record<number, number> = {};
+    if (arr.length === 0) return 0;
     let maxFreq = 0;
     let mode = arr[0];
-    for (const n of arr) {
-      freq[n] = (freq[n] || 0) + 1;
-      if (freq[n] > maxFreq) {
-        maxFreq = freq[n];
-        mode = n;
+    for (let i = 0; i < arr.length; i++) {
+      let count = 0;
+      for (let j = 0; j < arr.length; j++) {
+        if (arr[i] === arr[j]) count++;
+      }
+      if (count > maxFreq) {
+        maxFreq = count;
+        mode = arr[i];
       }
     }
     return mode;
@@ -179,7 +183,7 @@ export const useMediaPipe = (
         const landmarker = await HandLandmarker.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-            delegate: IS_MOBILE ? "CPU" : "GPU",
+            delegate: "CPU", // CPU is often faster on desktop by avoiding readPixels overhead
           },
           runningMode: "VIDEO",
           numHands: 1,
@@ -217,7 +221,7 @@ export const useMediaPipe = (
           videoRef.current.onloadeddata = () => {
             if (isActive) {
               setIsCameraReady(true);
-              predictWebcam();
+              startLoop();
             }
           };
         }
@@ -227,24 +231,24 @@ export const useMediaPipe = (
       }
     };
 
-    const predictWebcam = () => {
+    const predictWebcam = (time?: number) => {
       if (
         !videoRef.current ||
         !landmarkerRef.current ||
         !isActive ||
         !isTabVisible
       ) {
-        requestRef.current = requestAnimationFrame(predictWebcam);
+        scheduleNextFrame();
         return;
       }
 
       const video = videoRef.current;
       if (video.videoWidth > 0 && video.videoHeight > 0) {
-        const startTimeMs = performance.now();
+        const startTimeMs = time || performance.now();
 
         // Standardized throttling to 30 FPS for all devices
         if (startTimeMs - lastDetectionTimeRef.current < DETECTION_INTERVAL) {
-          requestRef.current = requestAnimationFrame(predictWebcam);
+          scheduleNextFrame();
           return;
         }
         lastDetectionTimeRef.current = startTimeMs;
@@ -255,49 +259,56 @@ export const useMediaPipe = (
             startTimeMs
           );
 
+          let currentCount = 0;
           if (results.landmarks && results.landmarks.length > 0) {
             const ratio = video.videoWidth / video.videoHeight;
             const lm = results.landmarks[0];
             landmarksRef.current = lm;
-            const count = countFingers(lm, ratio);
-
-            // Add to history buffer for temporal smoothing
-            fingerHistoryRef.current.push(count);
-            if (fingerHistoryRef.current.length > HISTORY_SIZE) {
-              fingerHistoryRef.current.shift();
-            }
-
-            // Use MODE (most frequent value) for stability
-            const smoothedCount =
-              fingerHistoryRef.current.length >= 3
-                ? getMode(fingerHistoryRef.current)
-                : count;
-
-            // PERFORMANCE: Only update via callback if count actually changed
-            // Removed state update to prevent high-frequency re-renders
-            if (lastCountRef.current !== smoothedCount) {
-              lastCountRef.current = smoothedCount;
-              if (onCountUpdate) onCountUpdate(smoothedCount);
-            }
+            currentCount = countFingers(lm, ratio);
           } else {
             landmarksRef.current = null;
-            // Add 0 to history even when no hand detected for temporal smoothing
-            fingerHistoryRef.current.push(0);
-            if (fingerHistoryRef.current.length > HISTORY_SIZE) {
-              fingerHistoryRef.current.shift();
-            }
+          }
 
-            const smoothedCount = getMode(fingerHistoryRef.current);
-            if (lastCountRef.current !== smoothedCount) {
-              lastCountRef.current = smoothedCount;
-              if (onCountUpdate) onCountUpdate(smoothedCount);
-            }
+          // Add to history buffer for temporal smoothing
+          fingerHistoryRef.current.push(currentCount);
+          if (fingerHistoryRef.current.length > HISTORY_SIZE) {
+            fingerHistoryRef.current.shift();
+          }
+
+          // Use MODE (most frequent value) for stability
+          const smoothedCount =
+            fingerHistoryRef.current.length >= 3
+              ? getMode(fingerHistoryRef.current)
+              : currentCount;
+
+          fingerCountRef.current = smoothedCount;
+
+          // PERFORMANCE: Only update via callback if count actually changed
+          if (lastCountRef.current !== smoothedCount) {
+            lastCountRef.current = smoothedCount;
+            if (onCountUpdate) onCountUpdate(smoothedCount);
           }
         } catch (e) {
           console.warn("Detection failed this frame", e);
         }
       }
-      requestRef.current = requestAnimationFrame(predictWebcam);
+      scheduleNextFrame();
+    };
+
+    const scheduleNextFrame = () => {
+      if (!isActive) return;
+
+      const video = videoRef.current;
+      // Use requestVideoFrameCallback if available for better sync with camera frames
+      if (video && (video as any).requestVideoFrameCallback) {
+        (video as any).requestVideoFrameCallback(predictWebcam);
+      } else {
+        requestRef.current = requestAnimationFrame(() => predictWebcam());
+      }
+    };
+
+    const startLoop = () => {
+      scheduleNextFrame();
     };
 
     setupMediaPipe();
@@ -307,12 +318,15 @@ export const useMediaPipe = (
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
       if (landmarkerRef.current) landmarkerRef.current.close();
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach((t) => t.stop());
+      if (videoRef.current) {
+        const video = videoRef.current;
+        if (video.srcObject) {
+          const stream = video.srcObject as MediaStream;
+          stream.getTracks().forEach((t) => t.stop());
+        }
       }
     };
   }, [videoRef]);
 
-  return { isCameraReady, error, landmarksRef };
+  return { isCameraReady, error, landmarksRef, fingerCountRef };
 };

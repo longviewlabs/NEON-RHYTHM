@@ -11,6 +11,7 @@ import { countFingers } from "../hooks/useMediaPipe";
 interface WebcamPreviewProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   landmarksRef: React.MutableRefObject<NormalizedLandmark[] | null>;
+  fingerCountRef: React.MutableRefObject<number>;
   isCameraReady: boolean;
   showFingerVector?: boolean;
 }
@@ -46,6 +47,7 @@ const HAND_CONNECTIONS = [
 const WebcamPreview: React.FC<WebcamPreviewProps> = ({
   videoRef,
   landmarksRef,
+  fingerCountRef,
   isCameraReady,
   showFingerVector = true,
 }) => {
@@ -56,18 +58,21 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
     let animationFrameId: number;
     let lastRenderTime = 0;
 
+    // Cache for layout values to avoid repetitive DOM reads
+    let cachedW = 0;
+    let cachedH = 0;
+
     const render = () => {
       if (!showFingerVector) {
         const canvas = canvasRef.current;
-        const ctx = canvas?.getContext("2d");
-        if (ctx && canvas) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (canvas) {
+          const ctx = canvas.getContext("2d");
+          if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
         return;
       }
 
       const now = performance.now();
-      // Throttle to ~30 FPS (33ms) to save CPU
       if (now - lastRenderTime < 33) {
         animationFrameId = requestAnimationFrame(render);
         return;
@@ -80,117 +85,94 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
       if (canvas && video && video.readyState >= 2) {
         const ctx = canvas.getContext("2d");
         if (ctx) {
-          // Match canvas to window (full screen overlay)
+          // Use window values but cache them locally for the frame
           const screenW = window.innerWidth;
           const screenH = window.innerHeight;
 
-          if (canvas.width !== screenW || canvas.height !== screenH) {
+          if (cachedW !== screenW || cachedH !== screenH) {
             canvas.width = screenW;
             canvas.height = screenH;
+            cachedW = screenW;
+            cachedH = screenH;
           }
 
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.clearRect(0, 0, screenW, screenH);
 
-          // --- Object-Cover Math ---
-          // Updated for object-cover behavior to ensure alignment
-          const videoRatio = video.videoWidth / video.videoHeight;
-          const screenRatio = screenW / screenH;
+          const landmarks = landmarksRef.current;
+          if (landmarks) {
+            const videoW = video.videoWidth;
+            const videoH = video.videoHeight;
+            const videoRatio = videoW / videoH;
+            const screenRatio = screenW / screenH;
 
-          let drawW, drawH, startX, startY;
+            let drawW, drawH, startX, startY;
 
-          if (screenRatio > videoRatio) {
-            // Screen is wider than video -> scale to screen width, crop top/bottom
-            drawW = screenW;
-            drawH = screenW / videoRatio;
-            startX = 0;
-            startY = (screenH - drawH) / 2;
-          } else {
-            // Screen is narrower than video -> scale to screen height, crop sides
-            drawH = screenH;
-            drawW = screenH * videoRatio;
-            startX = (screenW - drawW) / 2;
-            startY = 0;
-          }
+            if (screenRatio > videoRatio) {
+              drawW = screenW;
+              drawH = screenW / videoRatio;
+              startX = 0;
+              startY = (screenH - drawH) / 2;
+            } else {
+              drawH = screenH;
+              drawW = screenH * videoRatio;
+              startX = (screenW - drawW) / 2;
+              startY = 0;
+            }
 
-          // --- Draw Landmarks ---
-          if (landmarksRef.current) {
-            const landmarks = landmarksRef.current;
-
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.9)"; // Solid White
+            // Draw Skeleton
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
             ctx.lineWidth = 3;
             ctx.lineCap = "round";
 
-            const getCoords = (lm: NormalizedLandmark) => {
-              // Mirror X: (1 - x)
-              const mirroredX = 1 - lm.x;
+            const points = landmarks.map((lm) => ({
+              x: startX + (1 - lm.x) * drawW,
+              y: startY + lm.y * drawH,
+            }));
 
-              // Map to screen coords considering the object-cover transform
-              const screenX = startX + mirroredX * drawW;
-              const screenY = startY + lm.y * drawH;
-              return { x: screenX, y: screenY };
-            };
-
-            // Draw connections
             ctx.beginPath();
             for (const [start, end] of HAND_CONNECTIONS) {
-              const p1 = getCoords(landmarks[start]);
-              const p2 = getCoords(landmarks[end]);
+              const p1 = points[start];
+              const p2 = points[end];
               ctx.moveTo(p1.x, p1.y);
               ctx.lineTo(p2.x, p2.y);
             }
             ctx.stroke();
 
             // Draw Joints
-            ctx.fillStyle = "rgba(200, 200, 200, 0.8)"; // Simple Gray for joints
-            for (const lm of landmarks) {
-              const p = getCoords(lm);
+            ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+            for (const p of points) {
               ctx.beginPath();
-              ctx.arc(p.x, p.y, 4, 0, 2 * Math.PI);
+              ctx.arc(p.x, p.y, 3, 0, 2 * Math.PI);
               ctx.fill();
             }
 
-            // Draw Finger Count above the hand
-            const ratio = video.videoWidth / video.videoHeight;
-            const currentCount = countFingers(landmarks, ratio);
-
-            // ALWAYS show the count if landmarks are present, including 0
-            // This provides feedback that a "fist" (0) is correctly detected.
-            if (landmarks && landmarks.length > 0) {
-              // Find the topmost point of the hand
-              let minY = Infinity;
-              let topX = 0;
-              for (const lm of landmarks) {
-                const p = getCoords(lm);
-                if (p.y < minY) {
-                  minY = p.y;
-                  topX = p.x;
-                }
+            // Draw Finger Count
+            const currentCount = fingerCountRef.current;
+            let minY = Infinity;
+            let topX = 0;
+            for (const p of points) {
+              if (p.y < minY) {
+                minY = p.y;
+                topX = p.x;
               }
-
-              // Draw Count Text
-              ctx.fillStyle = currentCount === 0 ? "#ef4444" : "#fbbf24"; // Red for 0, Yellow for others
-              ctx.strokeStyle = "black";
-              ctx.lineWidth = 6;
-              ctx.font = "900 100px Inter, system-ui, sans-serif";
-              ctx.textAlign = "center";
-              ctx.textBaseline = "bottom";
-
-              const textY = minY - 20;
-              ctx.strokeText(currentCount.toString(), topX, textY);
-              ctx.fillText(currentCount.toString(), topX, textY);
-
-              // Reset shadow for the label
-              ctx.shadowBlur = 0;
-
-              // Add a small label
-              ctx.font = "900 14px Inter, system-ui, sans-serif";
-              ctx.fillStyle = currentCount === 0 ? "#ef4444" : "#fbbf24";
-              ctx.strokeStyle = "black";
-              ctx.lineWidth = 3;
-              (ctx as any).letterSpacing = "2px";
-              ctx.strokeText("FINGERS", topX, textY - 100);
-              ctx.fillText("FINGERS", topX, textY - 100);
             }
+
+            const textY = minY - 30;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "bottom";
+
+            // Count Number
+            ctx.font = "900 100px Inter, system-ui, sans-serif";
+            ctx.fillStyle = currentCount === 0 ? "#ef4444" : "#fbbf24";
+            ctx.strokeStyle = "rgba(0,0,0,0.8)";
+            ctx.lineWidth = 6;
+            ctx.strokeText(currentCount.toString(), topX, textY);
+            ctx.fillText(currentCount.toString(), topX, textY);
+
+            // "FINGERS" Label
+            ctx.font = "900 16px Inter, system-ui, sans-serif";
+            ctx.strokeText("FINGERS", topX, textY - 95);
+            ctx.fillText("FINGERS", topX, textY - 95);
           }
         }
       }
@@ -201,7 +183,7 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
     return () => {
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
     };
-  }, [isCameraReady, videoRef, showFingerVector]);
+  }, [isCameraReady, videoRef, showFingerVector, landmarksRef, fingerCountRef]);
 
   if (!isCameraReady) return null;
 

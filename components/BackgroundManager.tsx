@@ -7,6 +7,7 @@ interface BackgroundManagerProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   landmarksRef: React.MutableRefObject<any>;
+  fingerCountRef: React.MutableRefObject<number>;
   isCameraReady: boolean;
   videoOpacity: number;
   showFlash: boolean;
@@ -17,6 +18,7 @@ const BackgroundManager: React.FC<BackgroundManagerProps> = ({
   canvasRef,
   videoRef,
   landmarksRef,
+  fingerCountRef,
   isCameraReady,
   videoOpacity,
   showFlash,
@@ -46,6 +48,7 @@ const BackgroundManager: React.FC<BackgroundManagerProps> = ({
       <WebcamPreview
         videoRef={videoRef}
         landmarksRef={landmarksRef}
+        fingerCountRef={fingerCountRef}
         isCameraReady={isCameraReady}
         showFingerVector={
           status === GameStatus.LOADING || status === GameStatus.MENU
