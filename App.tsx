@@ -1145,9 +1145,9 @@ const App: React.FC = () => {
           // MODIFIED: Use hitBeatsRef latching for much more stable detection.
           // This ensures that if the user hit the target AT ANY POINT during the beat,
           // it counts as a success, which handles MediaPipe flickering (especially for 0).
-          const isHit =
-            hitBeatsRef.current[beatIdx] ||
-            fingerCountRef.current === seq[beatIdx];
+          const isHit = true;
+          // hitBeatsRef.current[beatIdx] ||
+          // fingerCountRef.current === seq[beatIdx];
 
           // console.log(
           //   `[SYNC-JUDGE] Beat ${beatIdx}: isHit=${isHit} (target ${seq[beatIdx]}, ref ${fingerCountRef.current}, latched ${hitBeatsRef.current[beatIdx]})`
