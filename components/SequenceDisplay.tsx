@@ -4,33 +4,22 @@ interface SequenceDisplayProps {
   sequence: number[];
   currentBeat: number;
   countdown: number | null;
-  localResults: (boolean | null)[];
 }
 
 const SequenceDisplay: React.FC<SequenceDisplayProps> = ({
   sequence,
   currentBeat,
   countdown,
-  localResults,
 }) => {
   return (
     <div className="flex flex-wrap justify-center items-center select-none w-full max-w-4xl mx-auto px-4 gap-y-4 md:gap-y-8 transition-all duration-500 opacity-100">
       {sequence.map((num, i) => {
         const isCurrent = i === currentBeat;
-        const result = localResults[i]; // null, true, or false
 
         let displayClass = "transition-all duration-300 ease-out inline-block";
-        
-        // Color logic: red if missed, green if hit, yellow if current and not judged
-        if (result === false) {
-          // Missed - red
-          displayClass += " text-red-500 scale-[1.2] drop-shadow-[0_0_30px_rgba(239,68,68,0.6)] z-10 font-black";
-        } else if (result === true) {
-          // Hit - green
-          displayClass += " text-green-500 scale-[1.2] drop-shadow-[0_0_30px_rgba(34,197,94,0.6)] z-10 font-black";
-        } else if (isCurrent && countdown === null) {
-          // Current beat not yet judged - yellow
-          displayClass += " text-yellow-400 scale-[1.5] drop-shadow-[0_0_30px_rgba(250,204,21,0.6)] z-10 font-black";
+        if (isCurrent && countdown === null) {
+          displayClass +=
+            " text-yellow-400 scale-[1.5] drop-shadow-[0_0_30px_rgba(250,204,21,0.6)] z-10 font-black";
         } else {
           displayClass += " text-white opacity-100";
         }

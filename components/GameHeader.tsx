@@ -5,7 +5,6 @@ interface GameHeaderProps {
   currentBpm: number;
   displayRound: number;
   exitingRound: number | null;
-  onFail: () => void;
 }
 
 const GameHeader: React.FC<GameHeaderProps> = ({
@@ -13,7 +12,6 @@ const GameHeader: React.FC<GameHeaderProps> = ({
   currentBpm,
   displayRound,
   exitingRound,
-  onFail,
 }) => {
   return (
     <div className="absolute top-10 left-0 right-0 z-50 flex flex-col items-center pointer-events-none scale-110 md:scale-125 overflow-hidden">
@@ -28,8 +26,7 @@ const GameHeader: React.FC<GameHeaderProps> = ({
         )}
         <div
           key={`enter-${displayRound}`}
-          onClick={onFail}
-          className="absolute text-6xl md:text-8xl font-black text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.4)] uppercase italic tracking-tighter animate-round-slide-in leading-none cursor-pointer pointer-events-auto"
+          className="absolute text-6xl md:text-8xl font-black text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.4)] uppercase italic tracking-tighter animate-round-slide-in leading-none"
         >
           ROUND {displayRound}
         </div>
