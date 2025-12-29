@@ -150,14 +150,14 @@ const ResultView: React.FC<ResultViewProps> = ({
                 </p>
               )}
               {/* Secondary Save CTA */}
-              <button
+              {/* <button
                 disabled={isRecording || !videoBlob}
                 onClick={onSaveVideo}
                 className="flex items-center gap-2 px-6 py-3 text-white/70 hover:text-white transition-colors text-sm font-bold uppercase tracking-widest disabled:opacity-0"
               >
                 <Download size={18} />
                 <span>Save video</span>
-              </button>
+              </button> */}
             </div>
           </div>
         </div>
