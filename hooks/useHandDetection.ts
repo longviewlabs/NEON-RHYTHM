@@ -340,14 +340,18 @@ export const useHandDetection = (
           if (type === "ready") {
             activeEngineRef.current = "tensorflow";
             isModelReadyRef.current = true;
+            detectorRef.current = "worker" as any; // Mark detector as ready for worker mode
             setCurrentEngine("tensorflow");
             setIsModelLoading(false);
             console.log("[Main] TensorFlow.js worker ready");
             // #region agent log
-            fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useHandDetection.ts:348',message:'Worker ready message received',data:{activeEngine:'tensorflow',isModelReady:true,workerExists:!!workerRef.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,E,F'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useHandDetection.ts:348',message:'Worker ready message received',data:{activeEngine:'tensorflow',isModelReady:true,workerExists:!!workerRef.current,detectorRefSet:!!detectorRef.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'I'})}).catch(()=>{});
             // #endregion
           } else if (type === "detection") {
             const { landmarks, frameId } = payload;
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useHandDetection.ts:352',message:'Main received detection result',data:{hasLandmarks:!!landmarks,landmarksLength:landmarks?.length||0,frameId:frameId,hasCallback:pendingDetectionsRef.current.has(frameId)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
+            // #endregion
             const callback = pendingDetectionsRef.current.get(frameId);
             if (callback) {
               callback(landmarks);
@@ -397,6 +401,10 @@ export const useHandDetection = (
     // ============== Camera Setup ==============
     const startCamera = async () => {
       try {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useHandDetection.ts:399',message:'startCamera called',data:{isActive:isActive,hasVideoRef:!!videoRef.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'I'})}).catch(()=>{});
+        // #endregion
+        
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
@@ -405,9 +413,16 @@ export const useHandDetection = (
           },
         });
 
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useHandDetection.ts:410',message:'Got camera stream',data:{hasStream:!!stream,isActive:isActive,hasVideoRef:!!videoRef.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'I'})}).catch(()=>{});
+        // #endregion
+
         if (videoRef.current && isActive) {
           videoRef.current.srcObject = stream;
           videoRef.current.onloadeddata = () => {
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useHandDetection.ts:417',message:'Video onloadeddata fired',data:{isActive:isActive,hasVideoRef:!!videoRef.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'I'})}).catch(()=>{});
+            // #endregion
             if (isActive) {
               setIsCameraReady(true);
               startLoop();
@@ -477,6 +492,10 @@ export const useHandDetection = (
 
     // ============== Detection Loop ==============
     const predictWebcam = async (time?: number) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useHandDetection.ts:480',message:'predictWebcam called',data:{hasVideo:!!videoRef.current,hasDetector:!!detectorRef.current,isActive:isActive,isTabVisible:isTabVisible,isProcessing:isProcessingRef.current,isModelReady:isModelReadyRef.current,activeEngine:activeEngineRef.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'I'})}).catch(()=>{});
+      // #endregion
+      
       if (
         !videoRef.current ||
         !detectorRef.current ||
@@ -485,6 +504,9 @@ export const useHandDetection = (
         isProcessingRef.current ||
         !isModelReadyRef.current
       ) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useHandDetection.ts:492',message:'predictWebcam early exit',data:{hasVideo:!!videoRef.current,hasDetector:!!detectorRef.current,isActive:isActive,isTabVisible:isTabVisible,isProcessing:isProcessingRef.current,isModelReady:isModelReadyRef.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'I'})}).catch(()=>{});
+        // #endregion
         scheduleNextFrame();
         return;
       }
@@ -728,6 +750,9 @@ export const useHandDetection = (
     };
 
     const startLoop = () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useHandDetection.ts:741',message:'startLoop called',data:{isActive:isActive,hasVideo:!!videoRef.current,hasDetector:!!detectorRef.current,isModelReady:isModelReadyRef.current,activeEngine:activeEngineRef.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'I'})}).catch(()=>{});
+      // #endregion
       scheduleNextFrame();
     };
 

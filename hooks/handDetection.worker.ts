@@ -165,7 +165,14 @@ async function detectHands(
   videoWidth: number,
   videoHeight: number
 ): Promise<Array<{ x: number; y: number; z: number }> | null> {
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:169',message:'detectHands entry',data:{hasDetector:!!detector,isModelReady:isModelReady,videoWidth:videoWidth,videoHeight:videoHeight},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
+  // #endregion
+  
   if (!detector || !isModelReady) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:176',message:'detectHands early return',data:{hasDetector:!!detector,isModelReady:isModelReady},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
+    // #endregion
     return null;
   }
 
@@ -182,28 +189,49 @@ async function detectHands(
     // Draw video frame to canvas
     ctx.drawImage(videoBitmap, 0, 0, videoWidth, videoHeight);
 
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:197',message:'Before estimateHands',data:{hasCanvas:!!canvas,hasDetector:!!detector},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
+    // #endregion
+    
     // Detect hands using TensorFlow.js
     const hands = await detector.estimateHands(canvas as any, {
       flipHorizontal: false,
     });
+    
     // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:130',message:'Worker detection result',data:{handsDetected:hands?.length||0,hasHands:!!(hands&&hands.length>0)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B,F'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:209',message:'After estimateHands',data:{handsDetected:hands?.length||0,hasHands:!!(hands&&hands.length>0),handsType:typeof hands,isArray:Array.isArray(hands)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
     // #endregion
 
     // Convert to normalized landmarks format (same as MediaPipe)
     if (hands && hands.length > 0) {
       const hand = hands[0];
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:218',message:'Processing hand landmarks',data:{hasKeypoints:!!hand.keypoints,keypointsLength:hand.keypoints?.length||0,hasKeypoints3D:!!hand.keypoints3D},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
+      // #endregion
+      
       const landmarks = hand.keypoints.map((kp: any, index: number) => ({
         x: kp.x / videoWidth,
         y: kp.y / videoHeight,
         z: hand.keypoints3D?.[index]?.z ?? 0,
       }));
 
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:228',message:'Returning landmarks',data:{landmarksCount:landmarks.length,firstLandmark:landmarks[0]},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
+      // #endregion
+
       return landmarks;
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:235',message:'No hands detected',data:{handsLength:hands?.length||0},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
+    // #endregion
+
     return null;
-  } catch (err) {
+  } catch (err: any) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:243',message:'Detection error caught',data:{errorMsg:err.message,errorStack:err.stack},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
+    // #endregion
     console.error("[Worker] Detection error:", err);
     return null;
   }
@@ -212,6 +240,10 @@ async function detectHands(
 // Message handler
 self.addEventListener("message", async (event) => {
   const { type, payload } = event.data;
+  
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:216',message:'Worker received message',data:{messageType:type,isModelReady:isModelReady,hasPayload:!!payload,hasVideoBitmap:!!payload?.videoBitmap},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
+  // #endregion
 
   try {
     switch (type) {
@@ -220,6 +252,10 @@ self.addEventListener("message", async (event) => {
         break;
 
       case "detect":
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:229',message:'Worker detect message',data:{isModelReady:isModelReady,hasDetector:!!detector,payloadKeys:payload?Object.keys(payload):[]},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
+        // #endregion
+        
         if (!isModelReady) {
           // Wait for model to be ready
           const checkReady = setInterval(() => {
@@ -253,6 +289,10 @@ self.addEventListener("message", async (event) => {
 // Handle detection request
 async function handleDetection(payload: any) {
   const { videoBitmap, videoWidth, videoHeight, frameId } = payload;
+  
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:268',message:'handleDetection called',data:{hasVideoBitmap:!!videoBitmap,videoWidth:videoWidth,videoHeight:videoHeight,frameId:frameId,videoBitmapType:typeof videoBitmap},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
+  // #endregion
 
   if (!videoBitmap) {
     console.warn("[Worker] No video bitmap provided");
@@ -263,6 +303,10 @@ async function handleDetection(payload: any) {
 
   // Close bitmap to free memory immediately
   videoBitmap.close();
+
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:292',message:'Sending result back to main',data:{hasLandmarks:!!landmarks,landmarksLength:landmarks?.length||0,frameId:frameId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H'})}).catch(()=>{});
+  // #endregion
 
   // Send result back to main thread
   self.postMessage({
