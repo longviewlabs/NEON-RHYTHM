@@ -93,7 +93,7 @@ const App: React.FC = () => {
   }, [status, currentBeat, sequence]);
 
   // Detection Engine Selection (must be declared before useHandDetection)
-  const [detectionEngine, setDetectionEngine] = useState<DetectionEngine>("mediapipe");
+  const [detectionEngine] = useState<DetectionEngine>("tensorflow");
 
   // Infinite Mode State (must be declared before useHandDetection for BPM)
   const [currentBpm, setCurrentBpm] = useState(95);
@@ -1414,8 +1414,6 @@ const App: React.FC = () => {
           <StartScreen
             onStart={handleStartGame}
             isAssetsReady={isAssetsReady && !isModelLoading}
-            detectionEngine={detectionEngine}
-            onEngineChange={setDetectionEngine}
           />
         )}
 

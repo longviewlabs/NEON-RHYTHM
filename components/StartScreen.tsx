@@ -1,18 +1,13 @@
 import React, { useState } from "react";
-import { DetectionEngine } from "../hooks/useHandDetection";
 
 interface StartScreenProps {
   onStart: () => void;
   isAssetsReady: boolean;
-  detectionEngine: DetectionEngine;
-  onEngineChange: (engine: DetectionEngine) => void;
 }
 
 const StartScreen: React.FC<StartScreenProps> = ({
   onStart,
   isAssetsReady,
-  detectionEngine,
-  onEngineChange,
 }) => {
   const [isTransitioning, setIsTransitioning] = useState(false);
 
@@ -46,45 +41,6 @@ const StartScreen: React.FC<StartScreenProps> = ({
           </div>
         </h1>
         <div className="subtitle-viral">ONLY 1% CAN PASS 💀</div>
-      </div>
-
-      {/* Detection Engine Toggle */}
-      <div className="mb-6 w-full max-w-xs">
-        <div className="text-xs text-gray-400 text-center mb-2 uppercase tracking-wider">
-          Detection Engine
-        </div>
-        <div className="flex rounded-xl overflow-hidden border border-white/20 bg-black/40 backdrop-blur-sm">
-          <button
-            onClick={() => onEngineChange("mediapipe")}
-            className={`flex-1 py-3 px-4 text-sm font-bold transition-all duration-200 ${
-              detectionEngine === "mediapipe"
-                ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg"
-                : "text-gray-400 hover:text-white hover:bg-white/5"
-            }`}
-          >
-            <div className="flex flex-col items-center gap-1">
-              <span>MediaPipe</span>
-              <span className="text-[10px] opacity-70">
-                {detectionEngine === "mediapipe" ? "Active" : "Accurate"}
-              </span>
-            </div>
-          </button>
-          <button
-            onClick={() => onEngineChange("tensorflow")}
-            className={`flex-1 py-3 px-4 text-sm font-bold transition-all duration-200 ${
-              detectionEngine === "tensorflow"
-                ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg"
-                : "text-gray-400 hover:text-white hover:bg-white/5"
-            }`}
-          >
-            <div className="flex flex-col items-center gap-1">
-              <span>TensorFlow</span>
-              <span className="text-[10px] opacity-70">
-                {detectionEngine === "tensorflow" ? "Active" : "Faster"}
-              </span>
-            </div>
-          </button>
-        </div>
       </div>
 
       <button
