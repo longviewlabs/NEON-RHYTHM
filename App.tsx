@@ -92,8 +92,8 @@ const App: React.FC = () => {
     sequenceRef.current = sequence;
   }, [status, currentBeat, sequence]);
 
-  // Detection Engine Selection
-  const [detectionEngine] = useState<DetectionEngine>("tensorflow");
+  // Detection Engine Selection - MediaPipe is faster & more stable on mobile (2-10ms vs 15-50ms)
+  const [detectionEngine] = useState<DetectionEngine>("mediapipe");
 
   // Infinite Mode State
   const [currentBpm, setCurrentBpm] = useState(95);

@@ -161,6 +161,7 @@ export const useHandDetection = (
     const setupMediaPipe = async () => {
       try {
         setIsModelLoading(true);
+        console.log("[MediaPipe] Initializing...");
 
         const { FilesetResolver, HandLandmarker } = await import(
           "@mediapipe/tasks-vision"
@@ -172,20 +173,36 @@ export const useHandDetection = (
 
         if (!isActive) return;
 
-        const landmarker = await HandLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-            delegate: "CPU",
-          },
-          runningMode: "VIDEO",
-          numHands: 1,
-          minHandDetectionConfidence: 0.5,
-          minHandPresenceConfidence: 0.5,
-          minTrackingConfidence: 0.5,
-        });
+        // Try GPU delegate first (faster), fallback to CPU/WASM if it fails
+        let landmarker: any = null;
+        const delegates = IS_MOBILE ? ["CPU"] : ["GPU", "CPU"]; // Mobile: WASM is more stable
+
+        for (const delegate of delegates) {
+          try {
+            console.log(`[MediaPipe] Trying ${delegate} delegate...`);
+            landmarker = await HandLandmarker.createFromOptions(vision, {
+              baseOptions: {
+                modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+                delegate: delegate as "GPU" | "CPU",
+              },
+              runningMode: "VIDEO",
+              numHands: 1,
+              minHandDetectionConfidence: 0.5,
+              minHandPresenceConfidence: 0.5,
+              minTrackingConfidence: 0.5,
+            });
+            console.log(`[MediaPipe] Successfully initialized with ${delegate} delegate`);
+            break; // Success, exit loop
+          } catch (delegateError) {
+            console.warn(`[MediaPipe] ${delegate} delegate failed:`, delegateError);
+            if (delegate === delegates[delegates.length - 1]) {
+              throw delegateError; // Last option failed, throw error
+            }
+          }
+        }
 
         if (!isActive) {
-          landmarker.close();
+          landmarker?.close();
           return;
         }
 
@@ -194,6 +211,7 @@ export const useHandDetection = (
         isModelReadyRef.current = true;
         setCurrentEngine("mediapipe");
         setIsModelLoading(false);
+        console.log("[MediaPipe] Ready for detection");
       } catch (err: any) {
         console.error("Error initializing MediaPipe:", err);
         setError(`Failed to load MediaPipe: ${err.message}`);
@@ -377,17 +395,11 @@ export const useHandDetection = (
         const ratio = video.videoWidth / video.videoHeight;
 
         if (activeEngineRef.current === "mediapipe") {
-          const bitmap = await createImageBitmap(video, {
-            resizeWidth: 320,
-            resizeHeight: 240,
-            resizeQuality: "low",
-          });
-
+          // MediaPipe can use video element directly - more efficient than ImageBitmap
           const results = detectorRef.current.detectForVideo(
-            bitmap,
-            Math.round(video.currentTime * 1000)
+            video,
+            performance.now()
           );
-          bitmap.close();
 
           if (results.landmarks && results.landmarks.length > 0) {
             landmarksRef.current = results.landmarks[0];
