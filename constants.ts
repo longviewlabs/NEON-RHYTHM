@@ -56,6 +56,10 @@ export const FIRST_BEAT_ROUND_3_SEC = 0;
 // Positive = delay game beats, Negative = advance game beats
 export const AUDIO_OFFSET_MS = 0;
 
+// Detection window as percentage of beat interval (±75% = very forgiving)
+// e.g., at 120 BPM (500ms beat), window is -375ms to +375ms around beat center
+export const DETECTION_WINDOW_PERCENT = 0.75;
+
 // Generate a simple rhythmic chart
 export const generateDemoChart = (): NoteData[] => {
   const notes: NoteData[] = [];

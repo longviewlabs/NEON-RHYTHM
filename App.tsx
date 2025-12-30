@@ -31,6 +31,7 @@ import {
   BASE_BPM,
   AUDIO_OFFSET_MS,
   FIRST_BEAT_TIME_SEC,
+  DETECTION_WINDOW_PERCENT,
 } from "./constants";
 import ShareInstructionsModal from "./components/ShareInstructionsModal";
 import { shareVideo, saveVideo, ShareTarget } from "./utils/shareUtils";
@@ -103,15 +104,35 @@ const App: React.FC = () => {
   const handleFingerCountUpdate = useCallback((count: number) => {
     fingerCountRef.current = count;
 
-    if (
-      statusRef.current === GameStatus.PLAYING &&
-      currentBeatRef.current >= 0 &&
-      currentBeatRef.current < sequenceRef.current.length
-    ) {
-      const target = sequenceRef.current[currentBeatRef.current];
-      if (count === target && !hitBeatsRef.current[currentBeatRef.current]) {
-        console.log(`[HIT-DIRECT] count=${count} matches target=${target}`);
-        hitBeatsRef.current[currentBeatRef.current] = true;
+    // Only check during active gameplay
+    if (statusRef.current !== GameStatus.PLAYING) return;
+    if (sequenceRef.current.length === 0) return;
+
+    // Get current audio time for ±75% window detection
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+
+    const currentTime = ctx.currentTime;
+    const firstBeatTime = firstBeatTimeRef.current;
+    const interval = beatIntervalRef.current;
+    const windowSize = interval * DETECTION_WINDOW_PERCENT;
+
+    // Check ALL beats within the ±75% detection window
+    for (let beatIdx = 0; beatIdx < sequenceRef.current.length; beatIdx++) {
+      // Skip if already hit
+      if (hitBeatsRef.current[beatIdx]) continue;
+
+      const beatTime = firstBeatTime + beatIdx * interval;
+      const windowStart = beatTime - windowSize;
+      const windowEnd = beatTime + windowSize;
+
+      // Check if current time is within this beat's detection window
+      if (currentTime >= windowStart && currentTime <= windowEnd) {
+        const target = sequenceRef.current[beatIdx];
+        if (count === target) {
+          console.log(`[HIT-WINDOW] Beat ${beatIdx}: count=${count} matches target=${target} (window: ${windowStart.toFixed(2)}-${windowEnd.toFixed(2)}, now: ${currentTime.toFixed(2)})`);
+          hitBeatsRef.current[beatIdx] = true;
+        }
       }
     }
   }, []);
@@ -129,6 +150,10 @@ const App: React.FC = () => {
 
   // Ref to track if target was hit for each beat index (prevents race conditions)
   const hitBeatsRef = useRef<boolean[]>([]);
+
+  // Beat timing refs for ±75% detection window
+  const firstBeatTimeRef = useRef<number>(0);
+  const beatIntervalRef = useRef<number>(0.5); // seconds per beat
 
   // AI Results Refs (for logic and polling)
   const aiResultsRef = useRef<(boolean | null)[]>([]);
@@ -1062,6 +1087,10 @@ const App: React.FC = () => {
     bpm: number
   ) => {
     const intervalSec = 60 / bpm;
+
+    // Store beat timing in refs for ±75% detection window in handleFingerCountUpdate
+    firstBeatTimeRef.current = firstBeatTime;
+    beatIntervalRef.current = intervalSec;
 
     // The FIRST beat happens at this absolute AudioContext time
     // firstBeatTime is passed in directly now
