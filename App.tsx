@@ -895,19 +895,17 @@ const App: React.FC = () => {
 
     let firstBeatTime: number;
 
+    const beatDuration = 60 / targetBPM;
+    const countdownDuration = 5 * beatDuration; // 5 beats for countdown
+
     if (rhythmEngine.isActive()) {
       // SEAMLESS CONTINUATION:
-      // Music is already playing.
-      // Find the next bar start that gives us enough time for the countdown.
-      const minLeadIn = 5.5; // seconds (to cover 5s countdown + buffer)
-      firstBeatTime = rhythmEngine.getNextDownbeat(minLeadIn);
+      // Start countdown immediately from current time
+      firstBeatTime = ctx.currentTime + countdownDuration + 0.1;
     } else {
       // START TRACK (Fresh Game):
       const musicStartTime = ctx.currentTime + 0.1;
-      const beatDuration = 60 / targetBPM;
-      const minLeadIn = 5.5; // seconds
-      const leadInBeats = Math.ceil(minLeadIn / beatDuration);
-      firstBeatTime = musicStartTime + leadInBeats * beatDuration;
+      firstBeatTime = musicStartTime + countdownDuration;
 
       rhythmEngine.start(targetBPM, "happy_hardcore", musicStartTime);
 
