@@ -55,7 +55,7 @@ const ResultView: React.FC<ResultViewProps> = ({
   }
 
   return (
-    <div className="flex flex-col items-center relative gap-2 md:gap-4">
+    <div className="flex flex-col items-center relative gap-2 md:gap-4 pb-32">
       {/* BIG ANIMATED FAIL TITLE AND SUBTITLE */}
       {hideForInfiniteFail && (
         <div className="z-[100] pointer-events-none mb-10 md:mb-20 animate-fail-stamp flex flex-col items-start translate-x-[-2%]">
@@ -113,53 +113,43 @@ const ResultView: React.FC<ResultViewProps> = ({
               </button>
             </div>
           )}
+        </div>
+      </div>
 
-          {/* NEW SHARING SECTION */}
-          <div
-            className="flex flex-col items-center gap-4 mt-8 w-full animate-slide-up-pop"
-            style={{
-              animationDelay: hideForInfiniteFail ? "0.8s" : "0s",
-              opacity: 0,
-              animationFillMode: "forwards",
-            }}
+      {/* FIXED BOTTOM SHARE BUTTON */}
+      <div
+        className="fixed bottom-6 left-0 right-0 z-50 flex flex-col items-center px-4 animate-slide-up-pop"
+        style={{
+          animationDelay: hideForInfiniteFail ? "0.8s" : "0s",
+          opacity: 0,
+          animationFillMode: "forwards",
+        }}
+      >
+        <div className="flex flex-col items-center gap-2 w-full max-w-sm">
+          <button
+            disabled={isRecording || !videoBlob}
+            onClick={() => onShare("system")}
+            className={`group relative px-12 py-5 rounded-2xl font-black text-xl tracking-widest transition-all shadow-[0_8px_20px_rgba(0,0,0,0.4)] w-full min-w-[280px] flex items-center justify-center gap-3 overflow-hidden ${
+              isRecording || !videoBlob
+                ? "bg-white/10 text-white/30 cursor-not-allowed"
+                : "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white hover:scale-[1.02] active:scale-95"
+            }`}
           >
-            {/* Primary Share CTA */}
-            <div className="flex flex-col items-center gap-2 w-full">
-              <button
-                disabled={isRecording || !videoBlob}
-                onClick={() => onShare("system")}
-                className={`group relative px-12 py-5 rounded-2xl font-black text-xl tracking-widest transition-all shadow-[0_8px_20px_rgba(0,0,0,0.4)] w-full min-w-[280px] flex items-center justify-center gap-3 overflow-hidden ${
-                  isRecording || !videoBlob
-                    ? "bg-white/10 text-white/30 cursor-not-allowed"
-                    : "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white hover:scale-[1.02] active:scale-95"
-                }`}
-              >
-                <span className="relative z-10">
-                  {isRecording || !videoBlob
-                    ? "PREPARING VIDEO..."
-                    : "SHARE THIS VIDEO"}
-                </span>
-                {!isRecording && videoBlob && (
-                  <span className="text-2xl">🔥</span>
-                )}
-                <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out pointer-events-none" />
-              </button>
-              {isRecording && (
-                <p className="text-white/40 text-[10px] uppercase font-bold tracking-widest animate-pulse">
-                  Processing High-Quality Export...
-                </p>
-              )}
-              {/* Secondary Save CTA */}
-              {/* <button
-                disabled={isRecording || !videoBlob}
-                onClick={onSaveVideo}
-                className="flex items-center gap-2 px-6 py-3 text-white/70 hover:text-white transition-colors text-sm font-bold uppercase tracking-widest disabled:opacity-0"
-              >
-                <Download size={18} />
-                <span>Save video</span>
-              </button> */}
-            </div>
-          </div>
+            <span className="relative z-10">
+              {isRecording || !videoBlob
+                ? "PREPARING VIDEO..."
+                : "SHARE THIS VIDEO"}
+            </span>
+            {!isRecording && videoBlob && (
+              <span className="text-2xl">🔥</span>
+            )}
+            <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out pointer-events-none" />
+          </button>
+          {isRecording && (
+            <p className="text-white/40 text-[10px] uppercase font-bold tracking-widest animate-pulse">
+              Processing High-Quality Export...
+            </p>
+          )}
         </div>
       </div>
     </div>
