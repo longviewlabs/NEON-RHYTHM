@@ -96,7 +96,7 @@ const App: React.FC = () => {
 
   // Infinite Mode State
   const [currentBpm, setCurrentBpm] = useState(95);
-  
+
   // Countdown state
   const [countdown, setCountdown] = useState<number | null>(null);
 
@@ -117,11 +117,8 @@ const App: React.FC = () => {
   }, []);
 
   // Hand detection - MediaPipe for all platforms
-  const { isCameraReady, landmarksRef, fingerCountRef, isModelLoading } = useHandDetection(
-    videoRef,
-    handleFingerCountUpdate,
-    currentBpm
-  );
+  const { isCameraReady, landmarksRef, fingerCountRef, isModelLoading } =
+    useHandDetection(videoRef, handleFingerCountUpdate, currentBpm);
   const rhythmEngine = useRhythmEngine(
     audioCtxRef.current,
     recorderGainRef.current
@@ -1053,7 +1050,9 @@ const App: React.FC = () => {
     rafId = requestAnimationFrame(tick);
 
     // Store rafId for cleanup (cast to match timer type)
-    gameTimersRef.current.push(rafId as unknown as ReturnType<typeof setTimeout>);
+    gameTimersRef.current.push(
+      rafId as unknown as ReturnType<typeof setTimeout>
+    );
   };
 
   const runSequence = (
@@ -1225,7 +1224,8 @@ const App: React.FC = () => {
               const transitionTimer = setTimeout(() => {
                 currentRoundRef.current += 1;
                 const nextRound = currentRoundRef.current;
-                const nextLength = 8 + (nextRound - 1) * 3;
+                const addedBeats = ((nextRound - 1) * (nextRound - 1 + 5)) / 2;
+                const nextLength = 8 + addedBeats;
                 const nextBpm = 100 + (nextRound - 1) * 5;
 
                 infiniteLengthRef.current = nextLength;
@@ -1471,7 +1471,9 @@ const App: React.FC = () => {
                   currentRoundRef.current += 1;
                   const nextRoundNum = currentRoundRef.current;
                   const nextBpm = 100 + (nextRoundNum - 1) * 5;
-                  const nextLength = 8 + (nextRoundNum - 1) * 3;
+                  const addedBeats =
+                    ((nextRoundNum - 1) * (nextRoundNum - 1 + 5)) / 2;
+                  const nextLength = 8 + addedBeats;
                   infiniteBpmRef.current = nextBpm;
                   infiniteLengthRef.current = nextLength;
                   setCurrentBpm(Math.round(nextBpm));
