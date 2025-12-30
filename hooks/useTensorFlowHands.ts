@@ -166,10 +166,11 @@ export const useTensorFlowHands = (
         if (!isActive) return;
 
         // Create detector with MediaPipeHands model (same landmarks as MediaPipe!)
+        // Always use "lite" model (complexity 0) for better performance in rhythm games
         const model = handPoseDetection.SupportedModels.MediaPipeHands;
         const detector = await handPoseDetection.createDetector(model, {
           runtime: "tfjs",
-          modelType: IS_MOBILE ? "lite" : "full", // Lite model for mobile
+          modelType: "lite", // Complexity 0 - faster inference, good enough for finger counting
           maxHands: 1,
         });
 

@@ -99,10 +99,11 @@ async function initDetector() {
     }
 
     // Use TensorFlow.js runtime (not MediaPipe) - required for module workers
+    // Always use "lite" model (complexity 0) for better performance in rhythm games
     const model = handPoseDetection.SupportedModels.MediaPipeHands;
     detector = await handPoseDetection.createDetector(model, {
       runtime: "tfjs",
-      modelType: IS_MOBILE ? "lite" : "full",
+      modelType: "lite", // Complexity 0 - faster inference, good enough for finger counting
       maxHands: 1,
     });
 

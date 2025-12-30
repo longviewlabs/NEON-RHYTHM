@@ -180,6 +180,9 @@ export const useMediaPipe = (
 
         if (!isActive) return;
 
+        // Note: MediaPipe Tasks API doesn't expose modelComplexity parameter
+        // The float16 model is the standard model. For better performance,
+        // consider using TensorFlow.js engine with "lite" modelType instead.
         const landmarker = await HandLandmarker.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
@@ -187,9 +190,9 @@ export const useMediaPipe = (
           },
           runningMode: "VIDEO",
           numHands: 1,
-          minHandDetectionConfidence: 0.5, // Sensitive for mobile
-          minHandPresenceConfidence: 0.5,
-          minTrackingConfidence: 0.5,
+          minHandDetectionConfidence: 0.4, // Lowered for faster detection
+          minHandPresenceConfidence: 0.4,
+          minTrackingConfidence: 0.4,
         });
 
         if (!isActive) {

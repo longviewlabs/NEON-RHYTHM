@@ -180,6 +180,8 @@ export const useHandDetection = (
         for (const delegate of delegates) {
           try {
             console.log(`[MediaPipe] Trying ${delegate} delegate...`);
+            // Note: MediaPipe Tasks API doesn't expose modelComplexity parameter
+            // Using lowered confidence thresholds for faster detection
             landmarker = await HandLandmarker.createFromOptions(vision, {
               baseOptions: {
                 modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
@@ -187,9 +189,9 @@ export const useHandDetection = (
               },
               runningMode: "VIDEO",
               numHands: 1,
-              minHandDetectionConfidence: 0.5,
-              minHandPresenceConfidence: 0.5,
-              minTrackingConfidence: 0.5,
+              minHandDetectionConfidence: 0.4, // Lowered for faster detection
+              minHandPresenceConfidence: 0.4,
+              minTrackingConfidence: 0.4,
             });
             console.log(`[MediaPipe] Successfully initialized with ${delegate} delegate`);
             break; // Success, exit loop
@@ -239,10 +241,11 @@ export const useHandDetection = (
         if (!isActive) return;
 
         // Create detector with MediaPipeHands model using tfjs runtime
+        // Always use "lite" model (complexity 0) for better performance in rhythm games
         const model = handPoseDetection.SupportedModels.MediaPipeHands;
         const detector = await handPoseDetection.createDetector(model, {
           runtime: "tfjs",
-          modelType: IS_MOBILE ? "lite" : "full",
+          modelType: "lite", // Complexity 0 - faster inference, good enough for finger counting
           maxHands: 1,
         });
 
