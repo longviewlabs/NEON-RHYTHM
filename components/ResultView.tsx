@@ -55,7 +55,7 @@ const ResultView: React.FC<ResultViewProps> = ({
   }
 
   return (
-    <div className="flex flex-col items-center relative gap-2 md:gap-4 pb-32">
+    <div className="flex flex-col items-center relative gap-2 md:gap-4 pb-40">
       {/* BIG ANIMATED FAIL TITLE AND SUBTITLE */}
       {hideForInfiniteFail && (
         <div className="z-[100] pointer-events-none mb-10 md:mb-20 animate-fail-stamp flex flex-col items-start translate-x-[-2%]">
@@ -118,7 +118,7 @@ const ResultView: React.FC<ResultViewProps> = ({
 
       {/* FIXED BOTTOM SHARE BUTTON */}
       <div
-        className="fixed bottom-6 left-0 right-0 z-50 flex flex-col items-center px-4 animate-slide-up-pop"
+        className="fixed bottom-20 left-0 right-0 z-50 flex flex-col items-center px-4 animate-slide-up-pop pb-[env(safe-area-inset-bottom)]"
         style={{
           animationDelay: hideForInfiniteFail ? "0.8s" : "0s",
           opacity: 0,
