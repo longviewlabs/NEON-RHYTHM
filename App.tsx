@@ -305,11 +305,11 @@ const App: React.FC = () => {
     osc.start();
     osc.stop(ctx.currentTime + 0.1);
 
-    // Cleanup via onended callback (no setTimeout needed)
-    osc.onended = () => {
+    // Disconnect nodes to free memory after sound ends
+    setTimeout(() => {
       osc.disconnect();
       gain.disconnect();
-    };
+    }, 200);
   }, []);
 
   // Metronome sound: Matches index copy.html rhythm engine (always plays, not affected by mute)
@@ -337,11 +337,11 @@ const App: React.FC = () => {
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.05);
 
-    // Cleanup via onended callback (no setTimeout needed)
-    osc.onended = () => {
+    // Disconnect nodes to free memory
+    setTimeout(() => {
       osc.disconnect();
       envelope.disconnect();
-    };
+    }, 100);
   }, []);
 
   // Success: Pleasant major chord chime (nice sounding ding)
@@ -368,11 +368,11 @@ const App: React.FC = () => {
       osc.start();
       osc.stop(now + 0.4);
 
-      // Cleanup via onended callback (no setTimeout needed)
-      osc.onended = () => {
+      // Cleanup
+      setTimeout(() => {
         osc.disconnect();
         gain.disconnect();
-      };
+      }, 500);
     });
   }, [isMuted]);
 
@@ -398,11 +398,11 @@ const App: React.FC = () => {
     osc.start();
     osc.stop(now + 0.4);
 
-    // Cleanup via onended callback (no setTimeout needed)
-    osc.onended = () => {
+    // Cleanup
+    setTimeout(() => {
       osc.disconnect();
       gain.disconnect();
-    };
+    }, 400);
   }, [isMuted]);
 
   // One-shot audio player for win/lose effects (not looped, not stopping bg music)
@@ -1068,12 +1068,24 @@ const App: React.FC = () => {
     // firstBeatTime is passed in directly now
 
     const results: (boolean | null)[] = new Array(seq.length).fill(null);
+    const beatFrameGroups: (string | null)[][] = Array.from(
+      { length: seq.length },
+      () => [null, null, null]
+    );
+    const beatLocalCounts: (number | null)[][] = Array.from(
+      { length: seq.length },
+      () => [null, null, null]
+    );
 
-    // Track which beats have had their UI updated (replaces multiple setTimeouts)
-    const uiTriggered: boolean[] = new Array(seq.length).fill(false);
+    // Snapshot offsets per beat: -300ms, 0ms (on the beat), +300ms
+    const snapshotOffsetsSec = [-0.3, 0, 0.3];
+
+    let nextBeatToSchedule = 0;
     let nextJudgementBeat = 0;
+    const LOOKAHEAD_SEC = 0.5; // Look ahead 500ms
+    const SCHEDULER_INTERVAL_MS = 50;
 
-    // Start the beat loop - uses single RAF loop for both UI and judgement
+    // Start the beat loop after audio offset for perfect sync
     const startBeatLoop = () => {
       // Pre-set canvas size for optimized capture (Low res is enough for AI)
       if (canvasRef.current) {
@@ -1087,21 +1099,74 @@ const App: React.FC = () => {
 
         const currentTime = ctx.currentTime;
 
-        // 1. UPDATE UI HIGHLIGHTS - Check all beats in single RAF loop
-        // No more setTimeout per beat - just check AudioContext time directly
-        for (let beatIdx = 0; beatIdx < seq.length; beatIdx++) {
-          if (uiTriggered[beatIdx]) continue;
-          
+        // 1. SCHEDULE SNAPSHOTS AND UI HIGHLIGHTS
+        // Reduced lookahead to 0.3s for tighter scheduling control
+        while (
+          nextBeatToSchedule < seq.length &&
+          firstBeatTime + nextBeatToSchedule * intervalSec < currentTime + 0.3
+        ) {
+          const beatIdx = nextBeatToSchedule;
           const beatTime = firstBeatTime + beatIdx * intervalSec;
-          // Trigger UI 15ms before beat time for React render buffer
-          if (currentTime >= beatTime - 0.015) {
-            uiTriggered[beatIdx] = true;
+
+          // Schedule the UI highlight for this beat
+          // Tighter React buffer (15ms instead of 30ms) for better feel
+          const uiDelay = Math.max(0, (beatTime - currentTime) * 1000 - 15);
+          const uiTimer = setTimeout(() => {
+            if (sessionIdRef.current !== currentSessionId) return;
+            // console.log(
+            //   `[SYNC-UI] Beat ${beatIdx}: target=${
+            //     seq[beatIdx]
+            //   } @ ${beatTime.toFixed(3)}s`
+            // );
             setCurrentBeat(beatIdx);
-          }
+          }, uiDelay);
+          gameTimersRef.current.push(uiTimer);
+
+          /* 
+          // Schedule snapshots
+          snapshotOffsetsSec.forEach((offset, snapIdx) => {
+            const snapTime = beatTime + offset;
+            const snapDelay = Math.max(0, (snapTime - currentTime) * 1000);
+
+            const snapTimer = setTimeout(() => {
+              if (sessionIdRef.current !== currentSessionId) return;
+              const currentLocalCount = fingerCountRef.current;
+              beatLocalCounts[beatIdx][snapIdx] = currentLocalCount;
+
+              if (judgementMode === "AI") {
+                const canvas = canvasRef.current;
+                const video = videoRef.current;
+                const ctxCanvas = canvas?.getContext("2d", { alpha: false });
+                if (ctxCanvas && video && canvas) {
+                  ctxCanvas.drawImage(video, 0, 0, 160, 120);
+                  const frame = canvas.toDataURL("image/jpeg", 0.3);
+                  beatFrameGroups[beatIdx][snapIdx] = frame;
+
+                  if (beatFrameGroups[beatIdx].every((f) => f !== null)) {
+                    analyzeBeat(
+                      beatIdx,
+                      beatFrameGroups[beatIdx] as string[],
+                      seq[beatIdx],
+                      currentSessionId
+                    );
+                  }
+                }
+              } else {
+                aiDetectedCountsRef.current[beatIdx] = beatLocalCounts[
+                  beatIdx
+                ] as number[];
+              }
+            }, snapDelay);
+            gameTimersRef.current.push(snapTimer);
+          });
+          */
+
+          nextBeatToSchedule++;
         }
 
         // 2. JUDGE BEATS
-        // Judgement happens at 90% through the beat to catch the pose before user transitions
+        // Judgement happens slightly earlier (80%) to catch the pose before user transitions
+        // and REPLACES 'latching' with 'holding' requirement to avoid "too forgiving" feedback.
         const judgeOffsetSec = intervalSec * 0.9;
         while (
           nextJudgementBeat < seq.length &&
@@ -1109,12 +1174,16 @@ const App: React.FC = () => {
             currentTime
         ) {
           const beatIdx = nextJudgementBeat;
-          // Use hitBeatsRef latching for stable detection.
+          // MODIFIED: Use hitBeatsRef latching for much more stable detection.
           // This ensures that if the user hit the target AT ANY POINT during the beat,
-          // it counts as a success, which handles MediaPipe flickering.
+          // it counts as a success, which handles MediaPipe flickering (especially for 0).
           const isHit =
             hitBeatsRef.current[beatIdx] ||
             fingerCountRef.current === seq[beatIdx];
+
+          // console.log(
+          //   `[SYNC-JUDGE] Beat ${beatIdx}: isHit=${isHit} (target ${seq[beatIdx]}, ref ${fingerCountRef.current}, latched ${hitBeatsRef.current[beatIdx]})`
+          // );
 
           results[beatIdx] = isHit;
           setLocalResults([...results]);
@@ -1127,16 +1196,10 @@ const App: React.FC = () => {
           if (!isHit) {
             playFailSound();
             if (isInfiniteMode) {
-              // Cancel the RAF loop
-              if (rafIdRef.current) {
-                cancelAnimationFrame(rafIdRef.current);
-                rafIdRef.current = null;
-              }
-              // Clear any remaining timers
               gameTimersRef.current.forEach((id) => {
                 clearTimeout(id as any);
                 clearInterval(id as any);
-                cancelAnimationFrame(id as any);
+                cancelAnimationFrame(id as any); // Also cancel countdown RAF
               });
               gameTimersRef.current = [];
               setRevealedResults([...results]);
@@ -1156,7 +1219,8 @@ const App: React.FC = () => {
             if (isInfiniteMode) {
               playOneShot("win");
               setRobotState("happy");
-              setFailOverlay({ show: false, round: currentRoundRef.current });
+              setFailOverlay({ show: false, round: currentRoundRef.current }); // Clear fail overlay on success
+              setOverlayText(`ROUND ${currentRoundRef.current} CLEARED!`);
               setOverlayText(`ROUND ${currentRoundRef.current} CLEARED!`);
               const transitionTimer = setTimeout(() => {
                 currentRoundRef.current += 1;
@@ -1171,12 +1235,13 @@ const App: React.FC = () => {
                 setCurrentRound(nextRound);
                 setCurrentBpm(Math.round(nextBpm));
                 setCurrentLength(nextLength);
+                // Don't update video overlay state yet - wait until new sequence is generated
 
                 // ENTER TRANSITION STATE
                 setStatus(GameStatus.TRANSITION);
-                rhythmEngine.setBpm(nextBpm);
+                rhythmEngine.setBpm(nextBpm); // Speed up music immediately
 
-                // Hold transition for 3 seconds before starting next round
+                // Hold transition for 3 seconds before starting next round (which begins with countdown)
                 const startTimer = setTimeout(() => {
                   startGame(undefined, nextBpm, nextLength);
                 }, 3000);
@@ -1186,18 +1251,29 @@ const App: React.FC = () => {
               return;
             }
             setTimeout(() => {
+              // const flattened = beatFrameGroups
+              //   .flat()
+              //   .filter((f) => f !== null) as string[];
+              // setCapturedFrames(flattened);
               analyzeGame(seq, results, currentSessionId);
             }, 500);
             return;
           }
         }
-        // Continue RAF loop
+        // FIX: Update the dedicated ref to prevent loop stacking
         rafIdRef.current = requestAnimationFrame(scheduler);
       };
       scheduler();
     };
 
+    // Use a ref to track current session ID for the scheduler
     startBeatLoop();
+
+    // Cleanup: Stop music when round ends or fails
+    const cleanup = () => {
+      rhythmEngine.stop();
+    };
+    // Note: cleanup logic is often handled by status changes or timers in this app
   };
 
   /*

@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useState, useEffect } from 'react';
 
 export type MusicType = 'happy_hardcore';
 
@@ -37,18 +37,6 @@ const MELODY_LOOP = [
     [349.23, 0, 440.00, 0, 523.25, 0, 440.00, 0, 349.23, 0, 440.00, 0, 523.25, 0, 698.46, 0]
 ];
 
-// Singleton Web Worker for scheduler timing (runs 25ms loop off main thread)
-let schedulerWorker: Worker | null = null;
-const getSchedulerWorker = (): Worker => {
-    if (!schedulerWorker) {
-        schedulerWorker = new Worker(
-            new URL('./rhythmScheduler.worker.ts', import.meta.url),
-            { type: 'module' }
-        );
-    }
-    return schedulerWorker;
-};
-
 export const useRhythmEngine = (audioContext: AudioContext | null, destination?: AudioNode | null) => {
     const bpmRef = useRef(100);
     const volumeRef = useRef(0.6);
@@ -56,11 +44,11 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
     const selectedPatternRef = useRef<MusicType>('happy_hardcore');
 
     const nextNoteTimeRef = useRef(0);
+    const timerIDRef = useRef<NodeJS.Timeout | null>(null);
     const current16thNoteRef = useRef(0);
     const measureRef = useRef(0);
     const noiseBufferRef = useRef<AudioBuffer | null>(null);
     const isActiveRef = useRef(false);
-    const workerListenerRef = useRef<((e: MessageEvent) => void) | null>(null);
 
     const onBeatCallbackRef = useRef<(note: number, time: number, measure: number) => void>(() => { });
 
@@ -81,7 +69,7 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
         noiseBufferRef.current = buffer;
     }, [audioContext]);
 
-    // Synthesis Functions - use onended for cleanup instead of setTimeout
+    // Synthesis Functions
     const playKick = useCallback((time: number) => {
         if (!audioContext) return;
         const osc = audioContext.createOscillator();
@@ -98,12 +86,6 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
 
         osc.start(time);
         osc.stop(time + 0.3);
-
-        // Cleanup via onended callback (no setTimeout needed)
-        osc.onended = () => {
-            osc.disconnect();
-            gainNode.disconnect();
-        };
     }, [audioContext, connectToDest]);
 
     const playSnare = useCallback((time: number) => {
@@ -122,13 +104,6 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
         noiseSource.start(time);
         noiseSource.stop(time + 0.2);
 
-        // Cleanup via onended
-        noiseSource.onended = () => {
-            noiseSource.disconnect();
-            noiseFilter.disconnect();
-            noiseGain.disconnect();
-        };
-
         const osc = audioContext.createOscillator();
         const oscGain = audioContext.createGain();
         osc.connect(oscGain);
@@ -139,12 +114,6 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
         oscGain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
         osc.start(time);
         osc.stop(time + 0.1);
-
-        // Cleanup via onended
-        osc.onended = () => {
-            osc.disconnect();
-            oscGain.disconnect();
-        };
     }, [audioContext, connectToDest]);
 
     const playHiHat = useCallback((time: number) => {
@@ -162,13 +131,6 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
         gainNode.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
         source.start(time);
         source.stop(time + 0.05);
-
-        // Cleanup via onended
-        source.onended = () => {
-            source.disconnect();
-            filter.disconnect();
-            gainNode.disconnect();
-        };
     }, [audioContext, connectToDest]);
 
     const playRide = useCallback((time: number) => {
@@ -192,13 +154,6 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
             gain.gain.exponentialRampToValueAtTime(0.001, time + 0.4);
             osc.start(time);
             osc.stop(time + 0.4);
-
-            // Cleanup via onended
-            osc.onended = () => {
-                osc.disconnect();
-                filter.disconnect();
-                gain.disconnect();
-            };
         });
 
         const noise = audioContext.createBufferSource();
@@ -214,13 +169,6 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
         noiseGain.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
         noise.start(time);
         noise.stop(time + 0.3);
-
-        // Cleanup via onended
-        noise.onended = () => {
-            noise.disconnect();
-            noiseFilter.disconnect();
-            noiseGain.disconnect();
-        };
     }, [audioContext, connectToDest]);
 
     const playMelodyNote = useCallback((time: number, freq: number) => {
@@ -255,14 +203,6 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
         osc2.start(time);
         osc1.stop(time + 0.25);
         osc2.stop(time + 0.25);
-
-        // Cleanup via onended (only need one since they stop at same time)
-        osc1.onended = () => {
-            osc1.disconnect();
-            osc2.disconnect();
-            filter.disconnect();
-            gain.disconnect();
-        };
     }, [audioContext, connectToDest]);
 
     // Scheduling Engine
@@ -294,13 +234,6 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
                 gain.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
                 osc.start(time);
                 osc.stop(time + 0.3);
-
-                // Cleanup via onended
-                osc.onended = () => {
-                    osc.disconnect();
-                    filter.disconnect();
-                    gain.disconnect();
-                };
             }
         }
 
@@ -315,9 +248,9 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
         onBeatCallbackRef.current(beatNumber, time, measureRef.current);
     }, [audioContext, playKick, playSnare, playHiHat, playRide, playMelodyNote, connectToDest]);
 
-    // Scheduler tick function - called by Web Worker every 25ms
-    const schedulerTick = useCallback(() => {
-        if (!audioContext || !isActiveRef.current) return;
+    const scheduler = useCallback(() => {
+        if (!audioContext) return;
+        const lookahead = 25.0; // milliseconds
         const scheduleAheadTime = 0.1; // seconds
 
         while (nextNoteTimeRef.current < audioContext.currentTime + scheduleAheadTime) {
@@ -330,60 +263,28 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
                 measureRef.current = (measureRef.current + 1) % 4;
             }
         }
+        timerIDRef.current = setTimeout(scheduler, lookahead);
     }, [audioContext, scheduleNote]);
 
     const start = useCallback((bpm: number, pattern: MusicType, startTime?: number) => {
         if (!audioContext) return;
-        
-        // Stop any existing playback first
-        const worker = getSchedulerWorker();
-        worker.postMessage({ type: 'stop' });
-        
-        // Remove old listener if exists
-        if (workerListenerRef.current) {
-            worker.removeEventListener('message', workerListenerRef.current);
-        }
-        
-        // Reset state
+        stop();
         bpmRef.current = bpm;
         selectedPatternRef.current = pattern;
         current16thNoteRef.current = 0;
         measureRef.current = 0;
         nextNoteTimeRef.current = startTime || audioContext.currentTime + 0.1;
         isActiveRef.current = true;
-        
-        // Create new listener for worker ticks
-        const listener = (e: MessageEvent) => {
-            if (e.data.type === 'tick' && isActiveRef.current) {
-                schedulerTick();
-            }
-        };
-        workerListenerRef.current = listener;
-        worker.addEventListener('message', listener);
-        
-        // Start the worker's timing loop
-        worker.postMessage({ type: 'start' });
-    }, [audioContext, schedulerTick]);
+        scheduler();
+    }, [audioContext, scheduler]);
 
     const stop = useCallback(() => {
         isActiveRef.current = false;
-        
-        const worker = getSchedulerWorker();
-        worker.postMessage({ type: 'stop' });
-        
-        // Remove listener
-        if (workerListenerRef.current) {
-            worker.removeEventListener('message', workerListenerRef.current);
-            workerListenerRef.current = null;
+        if (timerIDRef.current) {
+            clearTimeout(timerIDRef.current);
+            timerIDRef.current = null;
         }
     }, []);
-
-    // Cleanup on unmount
-    useEffect(() => {
-        return () => {
-            stop();
-        };
-    }, [stop]);
 
     const getNextDownbeat = useCallback((minDelaySeconds: number) => {
         if (!audioContext || !isActiveRef.current) return 0;
