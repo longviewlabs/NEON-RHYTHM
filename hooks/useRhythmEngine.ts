@@ -67,6 +67,11 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
             output[i] = Math.random() * 2 - 1;
         }
         noiseBufferRef.current = buffer;
+        
+        // Cleanup: Clear buffer reference on unmount to free memory
+        return () => {
+            noiseBufferRef.current = null;
+        };
     }, [audioContext]);
 
     // Synthesis Functions
@@ -249,7 +254,9 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
     }, [audioContext, playKick, playSnare, playHiHat, playRide, playMelodyNote, connectToDest]);
 
     const scheduler = useCallback(() => {
-        if (!audioContext) return;
+        // CRITICAL: Check if engine was stopped to prevent runaway scheduling
+        if (!audioContext || !isActiveRef.current) return;
+        
         const lookahead = 25.0; // milliseconds
         const scheduleAheadTime = 0.1; // seconds
 
@@ -263,7 +270,11 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
                 measureRef.current = (measureRef.current + 1) % 4;
             }
         }
-        timerIDRef.current = setTimeout(scheduler, lookahead);
+        
+        // Only schedule next tick if still active
+        if (isActiveRef.current) {
+            timerIDRef.current = setTimeout(scheduler, lookahead);
+        }
     }, [audioContext, scheduleNote]);
 
     const start = useCallback((bpm: number, pattern: MusicType, startTime?: number) => {
@@ -284,6 +295,10 @@ export const useRhythmEngine = (audioContext: AudioContext | null, destination?:
             clearTimeout(timerIDRef.current);
             timerIDRef.current = null;
         }
+        // Reset counters to prevent stale state on restart
+        current16thNoteRef.current = 0;
+        measureRef.current = 0;
+        nextNoteTimeRef.current = 0;
     }, []);
 
     const getNextDownbeat = useCallback((minDelaySeconds: number) => {

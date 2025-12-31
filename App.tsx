@@ -76,6 +76,7 @@ const App: React.FC = () => {
   const gameIdRef = useRef(0);
   const sessionIdRef = useRef(0);
   const stopRecordingTimeoutRef = useRef<number | null>(null);
+  const resultRevealIntervalRef = useRef<number | null>(null);
 
   // Tracking
   const [status, setStatus] = useState<GameStatus>(GameStatus.LOADING);
@@ -476,20 +477,46 @@ const App: React.FC = () => {
       rafIdRef.current = null;
     }
 
-    // Reset heavy state
+    // 3. Clear any pending recording stop timeout
+    if (stopRecordingTimeoutRef.current !== null) {
+      clearTimeout(stopRecordingTimeoutRef.current);
+      stopRecordingTimeoutRef.current = null;
+    }
+    
+    // 4. Clear result reveal interval (prevents stacking intervals bug)
+    if (resultRevealIntervalRef.current !== null) {
+      clearInterval(resultRevealIntervalRef.current);
+      resultRevealIntervalRef.current = null;
+    }
+
+    // 5. Reset ALL game state
     setCapturedFrames([]);
     setLocalResults([]);
     setAiResults([]);
     setRevealedResults([]);
     setAiDetectedCounts([]);
+    setCountdown(null);
+    setSequence([]);
+    setCurrentBeat(-1);
+    
+    // 6. Reset ALL refs to prevent stale data
     aiResultsRef.current = [];
     aiDetectedCountsRef.current = [];
-    setCurrentBeat(-1);
     hitBeatsRef.current = [];
+    firstBeatTimeRef.current = 0;
+    beatIntervalRef.current = 0.5;
+    sequenceRef.current = [];
+    currentBeatRef.current = -1;
   }, []);
 
   // Handle Score Screen Reveal Logic and Sounds
   useEffect(() => {
+    // CRITICAL: Always clear previous interval before creating new one
+    if (resultRevealIntervalRef.current !== null) {
+      clearInterval(resultRevealIntervalRef.current);
+      resultRevealIntervalRef.current = null;
+    }
+    
     if (status === GameStatus.RESULT) {
       // Initialize revealedResults to the correct length filled with null
       // Use functional update to ensure we are working with the latest state if needed,
@@ -536,15 +563,18 @@ const App: React.FC = () => {
             }
           } else {
             clearInterval(interval);
+            resultRevealIntervalRef.current = null;
           }
         }, 300);
-        gameTimersRef.current.push(interval);
-        return () => clearInterval(interval);
+        resultRevealIntervalRef.current = interval as unknown as number;
+        return () => {
+          clearInterval(interval);
+          resultRevealIntervalRef.current = null;
+        };
       } else {
         // AI MODE: Sync revealedResults with aiResults as they come
         // We use a staggered reveal for already available results,
         // and then the next effect handles ones that arrive late.
-        const initialResults = [...aiResults];
         let i = 0;
         const interval = setInterval(() => {
           if (i < sequence.length) {
@@ -568,6 +598,7 @@ const App: React.FC = () => {
             }
           } else {
             clearInterval(interval);
+            resultRevealIntervalRef.current = null;
             // Check if all were revealed already and play sound/set state
             setRevealedResults((prev) => {
               if (prev.every((r) => r !== null)) {
@@ -595,8 +626,11 @@ const App: React.FC = () => {
             });
           }
         }, 75);
-        gameTimersRef.current.push(interval);
-        return () => clearInterval(interval);
+        resultRevealIntervalRef.current = interval as unknown as number;
+        return () => {
+          clearInterval(interval);
+          resultRevealIntervalRef.current = null;
+        };
       }
     } else {
       // When not in RESULT state, keep revealedResults empty or reset
@@ -609,7 +643,6 @@ const App: React.FC = () => {
     sequence.length,
     playSuccessSound,
     playFailSound,
-    aiResults, // Added aiResults to dependency to ensure the initialResults snapshot is fresh
   ]);
 
   // Generate random sequence based on difficulty or infinite stats
@@ -1471,11 +1504,19 @@ const App: React.FC = () => {
               isVideoDownloaded={isVideoDownloaded}
               showSaveToast={showSaveToast}
               onReplay={async () => {
+                // CRITICAL: Full cleanup before replay
                 if (stopRecordingTimeoutRef.current !== null) {
                   clearTimeout(stopRecordingTimeoutRef.current);
                   stopRecordingTimeoutRef.current = null;
                 }
                 if (isRecording) await stopRecording();
+                
+                // Stop music and clear all game state
+                stopMusic();
+                cleanupTempData();
+                
+                // Replay from CURRENT round (not round 1)
+                // Keep the same BPM and length where user failed
                 if (isInfiniteMode) {
                   startGame(
                     undefined,
@@ -1487,12 +1528,23 @@ const App: React.FC = () => {
                 }
               }}
               onBackToMenu={() => {
+                // CRITICAL: Full cleanup to prevent memory leaks
+                cleanupTempData();
+                stopMusic();
+                
+                // Reset infinite mode refs
+                infiniteBpmRef.current = 100;
+                infiniteLengthRef.current = 8;
+                currentRoundRef.current = 1;
+                
+                // Reset all state
                 setDifficulty("EASY");
                 setIsInfiniteMode(true);
                 setCurrentRound(1);
-                currentRoundRef.current = 1;
                 setCurrentBpm(100);
                 setCurrentLength(8);
+                setRobotState("average");
+                setResultData(null);
                 setStatus(GameStatus.LOADING);
               }}
               onNextRound={() => {
