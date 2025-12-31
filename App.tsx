@@ -194,6 +194,8 @@ const App: React.FC = () => {
     isRecording,
     setOverlayText,
     setFailOverlay,
+    clearVideo,
+    isActuallyRecording,
   } = useVideoRecorder(
     videoRef,
     audioStreamDestRef.current?.stream,
@@ -966,7 +968,8 @@ const App: React.FC = () => {
 
       // Only start recording if not already recording
       // This keeps the recording continuous during round transitions
-      if (!isRecording) {
+      // Use isActuallyRecording() to check real MediaRecorder state, not stale React state
+      if (!isActuallyRecording()) {
         startRecording();
       }
     }
@@ -1509,6 +1512,10 @@ const App: React.FC = () => {
                   clearTimeout(stopRecordingTimeoutRef.current);
                   stopRecordingTimeoutRef.current = null;
                 }
+                
+                // Clear stale video data BEFORE stopping
+                clearVideo();
+                
                 if (isRecording) await stopRecording();
                 
                 // Stop music and clear all game state
@@ -1529,6 +1536,7 @@ const App: React.FC = () => {
               }}
               onBackToMenu={() => {
                 // CRITICAL: Full cleanup to prevent memory leaks
+                clearVideo();
                 cleanupTempData();
                 stopMusic();
                 

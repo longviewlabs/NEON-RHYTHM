@@ -38,6 +38,9 @@ export const useVideoRecorder = (
     const frameIdRef = useRef(0);
     const lastFrameTimeRef = useRef(0);
     
+    // Session tracking to prevent stale onstop callbacks
+    const sessionIdRef = useRef(0);
+    
     // Overlay state refs
     const overlayTextRef = useRef<string>("");
     const lastOverlayTextRef = useRef<string>("");
@@ -143,6 +146,13 @@ export const useVideoRecorder = (
         }
     }, []);
 
+    // Clear video blob immediately (for replay/restart scenarios)
+    const clearVideo = useCallback(() => {
+        sessionIdRef.current += 1; // Invalidate any pending onstop callbacks
+        setRecorderState({ isRecording: false, videoBlob: null }); // Also reset isRecording
+        chunksRef.current = [];
+    }, []);
+
     const startRecording = useCallback(() => {
         // Clear any pending stop timeout
         if (stopTimeoutRef.current !== null) {
@@ -166,6 +176,10 @@ export const useVideoRecorder = (
             });
             return;
         }
+
+        // Increment session ID to invalidate old onstop callbacks
+        sessionIdRef.current += 1;
+        const currentSession = sessionIdRef.current;
 
         // Reset old data
         chunksRef.current = [];
@@ -248,14 +262,31 @@ export const useVideoRecorder = (
             });
 
             recorder.ondataavailable = (e) => {
-                if (e.data.size > 0) {
+                // ONLY collect chunks if session is still valid
+                if (sessionIdRef.current === currentSession && e.data.size > 0) {
                     chunksRef.current.push(e.data);
                 }
             };
 
             recorder.onstop = () => {
-                const blob = new Blob(chunksRef.current, { type: mimeType });
-                setRecorderState({ isRecording: false, videoBlob: blob });
+                // CRITICAL: Only set blob if this session is still active
+                if (sessionIdRef.current === currentSession) {
+                    const blob = new Blob(chunksRef.current, { type: mimeType });
+                    setRecorderState({ isRecording: false, videoBlob: blob });
+                } else {
+                    // Session was invalidated - check if a new recording has started
+                    // Only set isRecording: false if no new recording is active
+                    setRecorderState(prev => {
+                        // If there's a new MediaRecorder that's recording, don't change state
+                        const hasNewRecorder = mediaRecorderRef.current && 
+                            mediaRecorderRef.current.state === "recording";
+                        if (hasNewRecorder) {
+                            return prev; // Keep current state (isRecording should be true)
+                        }
+                        // Otherwise, it's safe to mark as stopped
+                        return { ...prev, isRecording: false };
+                    });
+                }
                 if (rafIdRef.current) {
                     cancelAnimationFrame(rafIdRef.current);
                     rafIdRef.current = null;
@@ -287,14 +318,25 @@ export const useVideoRecorder = (
                 const recorder = mediaRecorderRef.current;
                 const handleStop = () => {
                     recorder.removeEventListener('stop', handleStop);
+                    // Clear the reference AFTER stopping to prevent stale callbacks
+                    if (mediaRecorderRef.current === recorder) {
+                        mediaRecorderRef.current = null;
+                    }
                     resolve();
                 };
                 recorder.addEventListener('stop', handleStop);
                 recorder.stop();
             } else {
+                // Clear reference even if already inactive
+                mediaRecorderRef.current = null;
                 resolve();
             }
         });
+    }, []);
+
+    // Check actual MediaRecorder state (not React state which may be stale)
+    const isActuallyRecording = useCallback(() => {
+        return mediaRecorderRef.current?.state === "recording";
     }, []);
 
     return {
@@ -304,5 +346,7 @@ export const useVideoRecorder = (
         stopRecording,
         setOverlayText,
         setFailOverlay,
+        clearVideo,
+        isActuallyRecording,
     };
 };
