@@ -1108,34 +1108,52 @@ const App: React.FC = () => {
     );
   };
 
-  const handleStopGame = useCallback(() => {
-    if (statusRef.current !== GameStatus.PLAYING) return;
+  const handlePass = useCallback(() => {
+    if (statusRef.current !== GameStatus.ROUND_END) return;
 
-    // Stop all game timers
-    gameTimersRef.current.forEach((id) => {
-      clearTimeout(id as any);
-      clearInterval(id as any);
-      cancelAnimationFrame(id as any);
-    });
-    gameTimersRef.current = [];
+    playOneShot("win");
+    setRobotState("happy");
+    setFailOverlay({ show: false, round: currentRoundRef.current });
+    setOverlayText(`ROUND ${currentRoundRef.current} CLEARED!`);
 
-    // Stop high-frequency game loop
-    if (rafIdRef.current) {
-      cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = null;
-    }
+    const nextRound = currentRoundRef.current + 1;
+    currentRoundRef.current = nextRound;
 
-    // Prepare results based on current progress
-    const currentCorrect = hitBeatsRef.current.filter((r) => r === true).length;
+    const addedBeats = ((nextRound - 1) * (nextRound - 1 + 5)) / 2;
+    const nextLength = 8 + addedBeats;
+    const nextBpm = 100 + (nextRound - 1) * 5;
 
-    // Set robot to sad because they stopped
+    infiniteLengthRef.current = nextLength;
+    infiniteBpmRef.current = nextBpm;
+
+    setCurrentRound(nextRound);
+    setCurrentBpm(Math.round(nextBpm));
+    setCurrentLength(nextLength);
+
+    setStatus(GameStatus.TRANSITION);
+    rhythmEngine.setBpm(nextBpm);
+
+    const startTimer = setTimeout(() => {
+      startGame(undefined, nextBpm, nextLength);
+    }, 3000);
+    gameTimersRef.current.push(startTimer);
+  }, [playOneShot, startGame, rhythmEngine]);
+
+  const handleFail = useCallback(() => {
+    if (statusRef.current !== GameStatus.ROUND_END) return;
+
+    // Mark as failed to show fail screen and hide Next Round button
+    const failedResults = new Array(sequence.length).fill(false);
+    aiResultsRef.current = failedResults;
+    setRevealedResults(failedResults);
+
     setRobotState("sad");
     playOneShot("lose");
     setShowFlash(true);
     setStatus(GameStatus.RESULT);
     setFailOverlay({ show: true, round: currentRoundRef.current });
     setTimeout(() => setShowFlash(false), 600);
-  }, [playOneShot]);
+  }, [playOneShot, sequence.length]);
 
   const runSequence = (
     seq: number[],
@@ -1276,69 +1294,12 @@ const App: React.FC = () => {
 
           if (!isHit) {
             playFailSound();
-            if (isInfiniteMode) {
-              gameTimersRef.current.forEach((id) => {
-                clearTimeout(id as any);
-                clearInterval(id as any);
-                cancelAnimationFrame(id as any); // Also cancel countdown RAF
-              });
-              gameTimersRef.current = [];
-              setRevealedResults([...results]);
-              setRobotState("sad");
-              playOneShot("lose");
-              setShowFlash(true);
-              setStatus(GameStatus.RESULT);
-              setFailOverlay({ show: true, round: currentRoundRef.current });
-              setTimeout(() => setShowFlash(false), 600);
-              return;
-            }
           }
           nextJudgementBeat++;
 
           if (nextJudgementBeat === seq.length) {
             setCurrentBeat(-1);
-            if (isInfiniteMode) {
-              playOneShot("win");
-              setRobotState("happy");
-              setFailOverlay({ show: false, round: currentRoundRef.current }); // Clear fail overlay on success
-              setOverlayText(`ROUND ${currentRoundRef.current} CLEARED!`);
-              setOverlayText(`ROUND ${currentRoundRef.current} CLEARED!`);
-              const transitionTimer = setTimeout(() => {
-                currentRoundRef.current += 1;
-                const nextRound = currentRoundRef.current;
-                const addedBeats = ((nextRound - 1) * (nextRound - 1 + 5)) / 2;
-                const nextLength = 8 + addedBeats;
-                const nextBpm = 100 + (nextRound - 1) * 5;
-
-                infiniteLengthRef.current = nextLength;
-                infiniteBpmRef.current = nextBpm;
-
-                // Update UI state immediately so TRANSITION screen shows correct values
-                setCurrentRound(nextRound);
-                setCurrentBpm(Math.round(nextBpm));
-                setCurrentLength(nextLength);
-                // Don't update video overlay state yet - wait until new sequence is generated
-
-                // ENTER TRANSITION STATE
-                setStatus(GameStatus.TRANSITION);
-                rhythmEngine.setBpm(nextBpm); // Speed up music immediately
-
-                // Hold transition for 3 seconds before starting next round (which begins with countdown)
-                const startTimer = setTimeout(() => {
-                  startGame(undefined, nextBpm, nextLength);
-                }, 3000);
-                gameTimersRef.current.push(startTimer);
-              }, 1500);
-              gameTimersRef.current.push(transitionTimer);
-              return;
-            }
-            setTimeout(() => {
-              // const flattened = beatFrameGroups
-              //   .flat()
-              //   .filter((f) => f !== null) as string[];
-              // setCapturedFrames(flattened);
-              analyzeGame(seq, results, currentSessionId);
-            }, 500);
+            setStatus(GameStatus.ROUND_END);
             return;
           }
         }
@@ -1502,7 +1463,8 @@ const App: React.FC = () => {
           countdown={countdown}
           sequence={sequence}
           currentBeat={currentBeat}
-          onStop={handleStopGame}
+          onPass={handlePass}
+          onFail={handleFail}
         />
 
         {/* --- RESULT STATE --- */}
