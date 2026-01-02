@@ -13,6 +13,7 @@ export enum GameStatus {
   ANALYZING = "ANALYZING",
   RESULT = "RESULT",
   TRANSITION = "TRANSITION",
+  ROUND_END = "ROUND_END",
 }
 
 export type RobotState = "happy" | "sad" | "analyzing" | "average";

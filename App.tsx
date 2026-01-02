@@ -4,7 +4,6 @@
  */
 
 import React, { useRef, useState, useEffect, useCallback } from "react";
-import { useHandDetection } from "./hooks/useHandDetection";
 import Robot from "./components/Robot";
 import BackgroundManager from "./components/BackgroundManager";
 import PlayingView from "./components/PlayingView";
@@ -102,45 +101,44 @@ const App: React.FC = () => {
   // Countdown state
   const [countdown, setCountdown] = useState<number | null>(null);
 
-  const handleFingerCountUpdate = useCallback((count: number) => {
-    fingerCountRef.current = count;
+  // Hand detection - Simplified for camera only
+  const [isCameraReady, setIsCameraReady] = useState(false);
+  const landmarksRef = useRef(null);
+  const fingerCountRef = useRef(0);
+  const isModelLoading = false;
 
-    // Only check during active gameplay
-    if (statusRef.current !== GameStatus.PLAYING) return;
-    if (sequenceRef.current.length === 0) return;
-
-    // Get current audio time for ±75% window detection
-    const ctx = audioCtxRef.current;
-    if (!ctx) return;
-
-    const currentTime = ctx.currentTime;
-    const firstBeatTime = firstBeatTimeRef.current;
-    const interval = beatIntervalRef.current;
-    const windowSize = interval * DETECTION_WINDOW_PERCENT;
-
-    // Check ALL beats within the ±75% detection window
-    for (let beatIdx = 0; beatIdx < sequenceRef.current.length; beatIdx++) {
-      // Skip if already hit
-      if (hitBeatsRef.current[beatIdx]) continue;
-
-      const beatTime = firstBeatTime + beatIdx * interval;
-      const windowStart = beatTime - windowSize;
-      const windowEnd = beatTime + windowSize;
-
-      // Check if current time is within this beat's detection window
-      if (currentTime >= windowStart && currentTime <= windowEnd) {
-        const target = sequenceRef.current[beatIdx];
-        if (count === target) {
-          console.log(`[HIT-WINDOW] Beat ${beatIdx}: count=${count} matches target=${target} (window: ${windowStart.toFixed(2)}-${windowEnd.toFixed(2)}, now: ${currentTime.toFixed(2)})`);
-          hitBeatsRef.current[beatIdx] = true;
+  // Manual camera setup since hook is gone
+  useEffect(() => {
+    let isActive = true;
+    const startCamera = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "user",
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+          },
+        });
+        if (videoRef.current && isActive) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.onloadedmetadata = () => {
+            setIsCameraReady(true);
+          };
         }
+      } catch (err) {
+        console.error("Camera Error:", err);
       }
-    }
+    };
+    startCamera();
+    return () => {
+      isActive = false;
+      if (videoRef.current?.srcObject) {
+        (videoRef.current.srcObject as MediaStream)
+          .getTracks()
+          .forEach((t) => t.stop());
+      }
+    };
   }, []);
-
-  // Hand detection - MediaPipe for all platforms
-  const { isCameraReady, landmarksRef, fingerCountRef, isModelLoading } =
-    useHandDetection(videoRef, handleFingerCountUpdate, currentBpm);
   const rhythmEngine = useRhythmEngine(
     audioCtxRef.current,
     recorderGainRef.current
@@ -484,7 +482,7 @@ const App: React.FC = () => {
       clearTimeout(stopRecordingTimeoutRef.current);
       stopRecordingTimeoutRef.current = null;
     }
-    
+
     // 4. Clear result reveal interval (prevents stacking intervals bug)
     if (resultRevealIntervalRef.current !== null) {
       clearInterval(resultRevealIntervalRef.current);
@@ -500,7 +498,7 @@ const App: React.FC = () => {
     setCountdown(null);
     setSequence([]);
     setCurrentBeat(-1);
-    
+
     // 6. Reset ALL refs to prevent stale data
     aiResultsRef.current = [];
     aiDetectedCountsRef.current = [];
@@ -518,7 +516,7 @@ const App: React.FC = () => {
       clearInterval(resultRevealIntervalRef.current);
       resultRevealIntervalRef.current = null;
     }
-    
+
     if (status === GameStatus.RESULT) {
       // Initialize revealedResults to the correct length filled with null
       // Use functional update to ensure we are working with the latest state if needed,
@@ -639,13 +637,7 @@ const App: React.FC = () => {
       // This prevents the previous game's results from flickering
       setRevealedResults(new Array(sequence.length).fill(null));
     }
-  }, [
-    status,
-    judgementMode,
-    sequence.length,
-    playSuccessSound,
-    playFailSound,
-  ]);
+  }, [status, judgementMode, sequence.length, playSuccessSound, playFailSound]);
 
   // Generate random sequence based on difficulty or infinite stats
   const generateSequence = useCallback(
@@ -1116,6 +1108,53 @@ const App: React.FC = () => {
     );
   };
 
+  const handlePass = useCallback(() => {
+    if (statusRef.current !== GameStatus.ROUND_END) return;
+
+    playOneShot("win");
+    setRobotState("happy");
+    setFailOverlay({ show: false, round: currentRoundRef.current });
+    setOverlayText(`ROUND ${currentRoundRef.current} CLEARED!`);
+
+    const nextRound = currentRoundRef.current + 1;
+    currentRoundRef.current = nextRound;
+
+    const addedBeats = ((nextRound - 1) * (nextRound - 1 + 5)) / 2;
+    const nextLength = 8 + addedBeats;
+    const nextBpm = 100 + (nextRound - 1) * 5;
+
+    infiniteLengthRef.current = nextLength;
+    infiniteBpmRef.current = nextBpm;
+
+    setCurrentRound(nextRound);
+    setCurrentBpm(Math.round(nextBpm));
+    setCurrentLength(nextLength);
+
+    setStatus(GameStatus.TRANSITION);
+    rhythmEngine.setBpm(nextBpm);
+
+    const startTimer = setTimeout(() => {
+      startGame(undefined, nextBpm, nextLength);
+    }, 3000);
+    gameTimersRef.current.push(startTimer);
+  }, [playOneShot, startGame, rhythmEngine]);
+
+  const handleFail = useCallback(() => {
+    if (statusRef.current !== GameStatus.ROUND_END) return;
+
+    // Mark as failed to show fail screen and hide Next Round button
+    const failedResults = new Array(sequence.length).fill(false);
+    aiResultsRef.current = failedResults;
+    setRevealedResults(failedResults);
+
+    setRobotState("sad");
+    playOneShot("lose");
+    setShowFlash(true);
+    setStatus(GameStatus.RESULT);
+    setFailOverlay({ show: true, round: currentRoundRef.current });
+    setTimeout(() => setShowFlash(false), 600);
+  }, [playOneShot, sequence.length]);
+
   const runSequence = (
     seq: number[],
     currentSessionId: number,
@@ -1238,12 +1277,8 @@ const App: React.FC = () => {
             currentTime
         ) {
           const beatIdx = nextJudgementBeat;
-          // MODIFIED: Use hitBeatsRef latching for much more stable detection.
-          // This ensures that if the user hit the target AT ANY POINT during the beat,
-          // it counts as a success, which handles MediaPipe flickering (especially for 0).
-          const isHit =
-            hitBeatsRef.current[beatIdx] ||
-            fingerCountRef.current === seq[beatIdx];
+          // Always count as hit for now since we removed detection
+          const isHit = true;
 
           // console.log(
           //   `[SYNC-JUDGE] Beat ${beatIdx}: isHit=${isHit} (target ${seq[beatIdx]}, ref ${fingerCountRef.current}, latched ${hitBeatsRef.current[beatIdx]})`
@@ -1259,69 +1294,12 @@ const App: React.FC = () => {
 
           if (!isHit) {
             playFailSound();
-            if (isInfiniteMode) {
-              gameTimersRef.current.forEach((id) => {
-                clearTimeout(id as any);
-                clearInterval(id as any);
-                cancelAnimationFrame(id as any); // Also cancel countdown RAF
-              });
-              gameTimersRef.current = [];
-              setRevealedResults([...results]);
-              setRobotState("sad");
-              playOneShot("lose");
-              setShowFlash(true);
-              setStatus(GameStatus.RESULT);
-              setFailOverlay({ show: true, round: currentRoundRef.current });
-              setTimeout(() => setShowFlash(false), 600);
-              return;
-            }
           }
           nextJudgementBeat++;
 
           if (nextJudgementBeat === seq.length) {
             setCurrentBeat(-1);
-            if (isInfiniteMode) {
-              playOneShot("win");
-              setRobotState("happy");
-              setFailOverlay({ show: false, round: currentRoundRef.current }); // Clear fail overlay on success
-              setOverlayText(`ROUND ${currentRoundRef.current} CLEARED!`);
-              setOverlayText(`ROUND ${currentRoundRef.current} CLEARED!`);
-              const transitionTimer = setTimeout(() => {
-                currentRoundRef.current += 1;
-                const nextRound = currentRoundRef.current;
-                const addedBeats = ((nextRound - 1) * (nextRound - 1 + 5)) / 2;
-                const nextLength = 8 + addedBeats;
-                const nextBpm = 100 + (nextRound - 1) * 5;
-
-                infiniteLengthRef.current = nextLength;
-                infiniteBpmRef.current = nextBpm;
-
-                // Update UI state immediately so TRANSITION screen shows correct values
-                setCurrentRound(nextRound);
-                setCurrentBpm(Math.round(nextBpm));
-                setCurrentLength(nextLength);
-                // Don't update video overlay state yet - wait until new sequence is generated
-
-                // ENTER TRANSITION STATE
-                setStatus(GameStatus.TRANSITION);
-                rhythmEngine.setBpm(nextBpm); // Speed up music immediately
-
-                // Hold transition for 3 seconds before starting next round (which begins with countdown)
-                const startTimer = setTimeout(() => {
-                  startGame(undefined, nextBpm, nextLength);
-                }, 3000);
-                gameTimersRef.current.push(startTimer);
-              }, 1500);
-              gameTimersRef.current.push(transitionTimer);
-              return;
-            }
-            setTimeout(() => {
-              // const flattened = beatFrameGroups
-              //   .flat()
-              //   .filter((f) => f !== null) as string[];
-              // setCapturedFrames(flattened);
-              analyzeGame(seq, results, currentSessionId);
-            }, 500);
+            setStatus(GameStatus.ROUND_END);
             return;
           }
         }
@@ -1446,8 +1424,6 @@ const App: React.FC = () => {
       <BackgroundManager
         canvasRef={canvasRef}
         videoRef={videoRef}
-        landmarksRef={landmarksRef}
-        fingerCountRef={fingerCountRef}
         isCameraReady={isCameraReady}
         videoOpacity={videoOpacity}
         showFlash={showFlash}
@@ -1487,7 +1463,8 @@ const App: React.FC = () => {
           countdown={countdown}
           sequence={sequence}
           currentBeat={currentBeat}
-          localResults={localResults}
+          onPass={handlePass}
+          onFail={handleFail}
         />
 
         {/* --- RESULT STATE --- */}
@@ -1512,16 +1489,16 @@ const App: React.FC = () => {
                   clearTimeout(stopRecordingTimeoutRef.current);
                   stopRecordingTimeoutRef.current = null;
                 }
-                
+
                 // Clear stale video data BEFORE stopping
                 clearVideo();
-                
+
                 if (isRecording) await stopRecording();
-                
+
                 // Stop music and clear all game state
                 stopMusic();
                 cleanupTempData();
-                
+
                 // Replay from CURRENT round (not round 1)
                 // Keep the same BPM and length where user failed
                 if (isInfiniteMode) {
@@ -1539,12 +1516,12 @@ const App: React.FC = () => {
                 clearVideo();
                 cleanupTempData();
                 stopMusic();
-                
+
                 // Reset infinite mode refs
                 infiniteBpmRef.current = 100;
                 infiniteLengthRef.current = 8;
                 currentRoundRef.current = 1;
-                
+
                 // Reset all state
                 setDifficulty("EASY");
                 setIsInfiniteMode(true);
