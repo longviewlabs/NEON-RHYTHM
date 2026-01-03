@@ -1,7 +1,7 @@
 /**
  * Unified Hand Detection Hook - MediaPipe Only
  * Uses MediaPipe Tasks Vision for all platforms (desktop, iOS, Android)
- * 
+ *
  * ARCHITECTURE:
  * - Single MediaPipe engine for all platforms
  * - Optimized for mobile with downscaled detection
@@ -126,7 +126,7 @@ export const useHandDetection = (
   const isProcessingRef = useRef<boolean>(false);
   const fingerHistoryRef = useRef<number[]>([]);
   const lastDetectionTimeRef = useRef<number>(0);
-  
+
   // Track model ready state
   const isModelReadyRef = useRef<boolean>(false);
   const currentBpmRef = useRef<number | undefined>(currentBpm);
@@ -186,10 +186,15 @@ export const useHandDetection = (
               minHandPresenceConfidence: 0.4,
               minTrackingConfidence: 0.4,
             });
-            console.log(`[MediaPipe] Successfully initialized with ${delegate} delegate`);
+            console.log(
+              `[MediaPipe] Successfully initialized with ${delegate} delegate`
+            );
             break; // Success, exit loop
           } catch (delegateError) {
-            console.warn(`[MediaPipe] ${delegate} delegate failed:`, delegateError);
+            console.warn(
+              `[MediaPipe] ${delegate} delegate failed:`,
+              delegateError
+            );
             if (delegate === delegates[delegates.length - 1]) {
               throw delegateError; // Last option failed, throw error
             }
@@ -220,6 +225,7 @@ export const useHandDetection = (
             facingMode: "user",
             width: { ideal: 640 },
             height: { ideal: 480 },
+            frameRate: { ideal: 60 },
           },
         });
 
@@ -257,7 +263,7 @@ export const useHandDetection = (
         scheduleNextFrame();
         return;
       }
-      
+
       const startTimeMs = time || performance.now();
 
       // Throttling for CPU/battery optimization
@@ -333,7 +339,7 @@ export const useHandDetection = (
       } finally {
         isProcessingRef.current = false;
       }
-      
+
       scheduleNextFrame();
     };
 
