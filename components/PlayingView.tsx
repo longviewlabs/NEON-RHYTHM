@@ -69,6 +69,7 @@ const PlayingView: React.FC<PlayingViewProps> = ({
               sequence={sequence}
               currentBeat={currentBeat}
               countdown={countdown}
+              localResults={localResults}
             />
           </div>
         )}
