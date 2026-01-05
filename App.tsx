@@ -34,7 +34,7 @@ import {
   DETECTION_WINDOW_PERCENT,
 } from "./constants";
 import ShareInstructionsModal from "./components/ShareInstructionsModal";
-import { shareVideo, saveVideo, ShareTarget } from "./utils/shareUtils";
+import { saveVideo, ShareTarget } from "./utils/shareUtils";
 import { Download } from "lucide-react";
 import SafeZone from "./components/SafeZone";
 
@@ -1009,33 +1009,8 @@ const App: React.FC = () => {
     if (!videoBlob) return;
 
     console.log(`[Instrument] share_clicked target: ${target}`);
-    const mimeType = videoBlob.type.split(";")[0];
-    const extension = mimeType.split("/")[1] || "mp4";
-    const file = new File([videoBlob], `neon-rhythm-run.${extension}`, {
-      type: videoBlob.type,
-    });
-
-    if (target !== "system") {
-      console.log(`[Instrument] quickshare_${target}_clicked`);
-      setActiveShareTarget(target);
-      setIsShareModalOpen(true);
-      return;
-    }
-
-    const result = await shareVideo(file, target);
-    if (result.method === "native") {
-      if (result.success) {
-        console.log(`[Instrument] share_native_success`);
-      } else {
-        console.log(
-          `[Instrument] share_native_cancelled_or_failed: ${result.error}`
-        );
-      }
-    } else {
-      console.log(`[Instrument] share_fallback_trigger_modal`);
-      setActiveShareTarget("system");
-      setIsShareModalOpen(true);
-    }
+    setActiveShareTarget(target);
+    setIsShareModalOpen(true);
   };
 
   const handleSaveVideo = () => {
