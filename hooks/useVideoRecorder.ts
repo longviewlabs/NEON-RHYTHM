@@ -113,8 +113,8 @@ export const useVideoRecorder = (
     // Create canvas for MediaRecorder (main thread canvas)
     const canvas = document.createElement("canvas");
     // Use 4:3 globally for consistency as requested
-    canvas.width = 640;
-    canvas.height = 480;
+    canvas.width = 720;
+    canvas.height = 1280;
 
     canvasRef.current = canvas;
     ctxRef.current = canvas.getContext("2d", {
@@ -321,7 +321,8 @@ export const useVideoRecorder = (
       const recorder = new MediaRecorder(stream, {
         mimeType,
         // Increase bitrate for higher FPS (30fps on mobile -> 3Mbps, 60fps on desktop -> 8Mbps)
-        videoBitsPerSecond: IS_MOBILE ? 3000000 : 8000000,
+        // Increase bitrate for higher resolution (720x1280)
+        videoBitsPerSecond: IS_MOBILE ? 5000000 : 8000000,
       });
 
       recorder.ondataavailable = (e) => {
