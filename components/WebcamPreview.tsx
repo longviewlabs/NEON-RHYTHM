@@ -100,6 +100,7 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
 
           const landmarks = landmarksRef.current;
           if (landmarks) {
+            // console.log("[WebcamPreview] Drawing landmarks:", landmarks.length);
             const videoW = video.videoWidth;
             const videoH = video.videoHeight;
             const videoRatio = videoW / videoH;

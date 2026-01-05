@@ -144,7 +144,11 @@ const App: React.FC = () => {
 
   // Hand detection - MediaPipe for all platforms (Internal tracking only)
   const { isTrackingReady, landmarksRef, fingerCountRef, isModelLoading } =
-    useHandDetection(handleFingerCountUpdate, currentBpm);
+    useHandDetection(
+      handleFingerCountUpdate,
+      currentBpm,
+      status === GameStatus.MENU || status === GameStatus.LOADING
+    );
   const rhythmEngine = useRhythmEngine(
     audioCtxRef.current,
     recorderGainRef.current
@@ -988,16 +992,13 @@ const App: React.FC = () => {
       await ctx.resume();
     }
 
-    // 2. Start game directly, bypassing MENU state
+    // 2. Start game directly
     setIsInfiniteMode(true);
-    setJudgementMode("LOCAL"); // Force LOCAL mode for real-time infinite play
+    setJudgementMode("LOCAL");
     setCurrentRound(1);
     currentRoundRef.current = 1;
-    // Speed up initial difficulty
     infiniteBpmRef.current = 100;
     infiniteLengthRef.current = 8;
-
-    // Update State
     setCurrentBpm(100);
     setCurrentLength(8);
 
@@ -1288,30 +1289,17 @@ const App: React.FC = () => {
             currentTime
         ) {
           const beatIdx = nextJudgementBeat;
-          // MODIFIED: Use hitBeatsRef latching for much more stable detection.
-          // This ensures that if the user hit the target AT ANY POINT during the beat,
-          // it counts as a success, which handles MediaPipe flickering (especially for 0).
-          const isHit =
-            hitBeatsRef.current[beatIdx] ||
-            fingerCountRef.current === seq[beatIdx];
-
-          // console.log(
-          //   `[SYNC-JUDGE] Beat ${beatIdx}: isHit=${isHit} (target ${seq[beatIdx]}, ref ${fingerCountRef.current}, latched ${hitBeatsRef.current[beatIdx]})`
-          // );
-
-          results[beatIdx] = isHit;
+          results[beatIdx] = null; // No auto-judging
           setLocalResults([...results]);
 
           if (judgementMode === "LOCAL") {
-            aiResultsRef.current[beatIdx] = isHit;
+            aiResultsRef.current[beatIdx] = null;
             setAiResults([...aiResultsRef.current]);
           }
 
-          if (!isHit) {
-            playFailSound();
-            // REMOVED: Auto-fail logic for infinite mode - user must decide now
-            // REMOVED: isWrongInput flashing
-          }
+          // nextJudgementBeat++; // Original logic
+          // if (!isHit) playFailSound(); // Original logic
+
           nextJudgementBeat++;
 
           if (nextJudgementBeat >= seq.length) {
@@ -1470,19 +1458,6 @@ const App: React.FC = () => {
               isTrackingReady &&
               isCameraReady
             }
-          />
-        )}
-
-        {/* --- MENU STATE --- */}
-        {status === GameStatus.MENU && (
-          <MenuView
-            isCameraReady={isCameraReady}
-            onStartInfinite={() => {
-              setCurrentBpm(95);
-              setCurrentLength(8);
-              setCurrentRound(1);
-              startGame(undefined, 95, 8);
-            }}
           />
         )}
 

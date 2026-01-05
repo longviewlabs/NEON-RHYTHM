@@ -320,8 +320,8 @@ export const useVideoRecorder = (
     try {
       const recorder = new MediaRecorder(stream, {
         mimeType,
-        // Increase bitrate for higher FPS (30fps on mobile -> 1.5Mbps, 60fps on desktop -> 5Mbps)
-        videoBitsPerSecond: IS_MOBILE ? 1500000 : 5000000,
+        // Increase bitrate for higher FPS (30fps on mobile -> 3Mbps, 60fps on desktop -> 8Mbps)
+        videoBitsPerSecond: IS_MOBILE ? 3000000 : 8000000,
       });
 
       recorder.ondataavailable = (e) => {

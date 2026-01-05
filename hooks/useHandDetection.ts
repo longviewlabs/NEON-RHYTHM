@@ -112,7 +112,8 @@ const getMode = (arr: number[]): number => {
 
 export const useHandDetection = (
   onCountUpdate?: (count: number) => void,
-  currentBpm?: number
+  currentBpm?: number,
+  enabled: boolean = true
 ) => {
   const [error, setError] = useState<string | null>(null);
   const [isModelLoading, setIsModelLoading] = useState(true);
@@ -151,35 +152,13 @@ export const useHandDetection = (
     return IS_MOBILE ? 3 : 5;
   };
 
+  // ============== MediaPipe Setup (Once) ==============
   useEffect(() => {
     let isActive = true;
-    let isTabVisible = true;
 
-    // Create a hidden video element for tracking if it doesn't exist
-    if (!trackingVideoRef.current) {
-      const v = document.createElement("video");
-      v.autoplay = true;
-      v.playsInline = true;
-      v.muted = true;
-      v.style.display = "none";
-      v.style.position = "absolute";
-      v.style.width = "320px"; // Fixed size for tracking
-      v.style.height = "240px";
-      v.style.opacity = "0";
-      trackingVideoRef.current = v;
-      document.body.appendChild(v);
-    }
-
-    const handleVisibilityChange = () => {
-      isTabVisible = !document.hidden;
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    // ============== MediaPipe Setup ==============
     const setupMediaPipe = async () => {
       try {
         setIsModelLoading(true);
-
         const vision = await FilesetResolver.forVisionTasks(
           "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/wasm"
         );
@@ -223,7 +202,49 @@ export const useHandDetection = (
       }
     };
 
-    // ============== Tracking Stream Setup (LOW RES ONLY) ==============
+    setupMediaPipe();
+
+    return () => {
+      isActive = false;
+      isModelReadyRef.current = false;
+      if (landmarkerRef.current) {
+        landmarkerRef.current.close();
+        landmarkerRef.current = null;
+      }
+    };
+  }, []);
+
+  // ============== Tracking Loop Control (Based on enabled) ==============
+  useEffect(() => {
+    if (!enabled) {
+      setIsTrackingReady(false);
+      landmarksRef.current = null;
+      return;
+    }
+
+    let isActive = true;
+    let isTabVisible = true;
+
+    // Create a hidden video element for tracking if it doesn't exist
+    if (!trackingVideoRef.current) {
+      const v = document.createElement("video");
+      v.autoplay = true;
+      v.playsInline = true;
+      v.muted = true;
+      v.style.display = "none";
+      v.style.position = "absolute";
+      v.style.width = "320px";
+      v.style.height = "240px";
+      v.style.opacity = "0";
+      trackingVideoRef.current = v;
+      document.body.appendChild(v);
+    }
+
+    const handleVisibilityChange = () => {
+      isTabVisible = !document.hidden;
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     const startTrackingCamera = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -239,10 +260,6 @@ export const useHandDetection = (
           trackingVideoRef.current.srcObject = stream;
           trackingVideoRef.current.onloadeddata = () => {
             if (isActive && trackingVideoRef.current) {
-              const { videoWidth, videoHeight } = trackingVideoRef.current;
-              console.log(
-                `[HandDetection] Tracking ready: ${videoWidth}x${videoHeight}`
-              );
               setIsTrackingReady(true);
               startLoop();
             }
@@ -255,10 +272,8 @@ export const useHandDetection = (
       }
     };
 
-    // ============== Detection Loop ==============
     const predictWebcam = async () => {
       const trackingVideo = trackingVideoRef.current;
-
       if (
         !trackingVideo ||
         !landmarkerRef.current ||
@@ -272,7 +287,6 @@ export const useHandDetection = (
       }
 
       const startTimeMs = performance.now();
-
       if (startTimeMs - lastDetectionTimeRef.current < DETECTION_INTERVAL) {
         scheduleNextFrame();
         return;
@@ -289,7 +303,6 @@ export const useHandDetection = (
       try {
         let currentCount = 0;
         const ratio = trackingVideo.videoWidth / trackingVideo.videoHeight;
-
         const results = landmarkerRef.current.detectForVideo(
           trackingVideo,
           performance.now()
@@ -314,7 +327,6 @@ export const useHandDetection = (
             : currentCount;
 
         fingerCountRef.current = smoothedCount;
-
         if (lastCountRef.current !== smoothedCount) {
           lastCountRef.current = smoothedCount;
           if (onCountUpdate) onCountUpdate(smoothedCount);
@@ -342,19 +354,12 @@ export const useHandDetection = (
       scheduleNextFrame();
     };
 
-    setupMediaPipe();
     startTrackingCamera();
 
     return () => {
       isActive = false;
-      isModelReadyRef.current = false;
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
-
-      if (landmarkerRef.current) {
-        landmarkerRef.current.close();
-        landmarkerRef.current = null;
-      }
 
       if (trackingVideoRef.current) {
         const video = trackingVideoRef.current;
@@ -369,7 +374,7 @@ export const useHandDetection = (
         trackingVideoRef.current = null;
       }
     };
-  }, []);
+  }, [enabled]);
 
   return {
     isTrackingReady,
